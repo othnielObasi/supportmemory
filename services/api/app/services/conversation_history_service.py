@@ -69,6 +69,15 @@ class ConversationHistoryService:
         )
         return [self._public(doc, include_messages=False) for doc in docs if doc.get("organisation_id", "org_default") == organisation_id and doc.get("workspace_id", "wrk_default") == workspace_id]
 
+    async def list_for_workspace(self, *, limit: int = 50, organisation_id: str, workspace_id: str) -> list[dict[str, Any]]:
+        docs = await self.store.find_many(
+            self.COLLECTION,
+            query={"organisation_id": organisation_id, "workspace_id": workspace_id},
+            limit=limit,
+            sort=[("updated_at", DESCENDING)],
+        )
+        return [self._public(doc) for doc in docs]
+
     async def get_or_create_default(self, user_id: str, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> dict[str, Any]:
         docs = await self.store.find_many(
             self.COLLECTION,

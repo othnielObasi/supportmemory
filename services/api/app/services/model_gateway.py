@@ -28,47 +28,26 @@ class ModelGateway(Protocol):
     def attempts_as_dicts(self, attempts: Any) -> list[dict[str, Any]]: ...
 
 
-class DeterministicLocalGateway:
+class UnavailableGateway:
+    def __init__(self, provider: str):
+        self.provider = provider
+
     @property
     def enabled(self) -> bool:
-        return True
+        return False
 
     @property
     def configured_models(self) -> dict[str, str]:
-        return {"primary": "local-deterministic", "fallback": "local-deterministic"}
+        return {"primary": f"{self.provider}-not-configured"}
 
     async def chat(self, **kwargs: Any) -> GatewayResult:
-        user = kwargs.get("user", "")
-        images = kwargs.get("images") or []
-        if images:
-            return GatewayResult(
-                content=(
-                    "Local multimodal fallback: image evidence received. "
-                    "Configure QWEN_API_KEY to enable Qwen-VL live vision. "
-                    f"Prompt context: {str(user)[:300]}"
-                ),
-                provider="local-deterministic-gateway",
-                model="local-vision-fallback",
-                used_fallback=True,
-                attempts=[],
-            )
-        return GatewayResult(
-            content=(
-                "TraceMemory local gateway response: the agent plan was generated deterministically for offline development. "
-                "Configure a provider adapter (OpenAI-compatible, OpenRouter, or Google) for live model calls.\n\n"
-                f"Task context: {user[:500]}"
-            ),
-            provider="local-deterministic-gateway",
-            model="local-deterministic",
-            used_fallback=False,
-            attempts=[],
-        )
+        raise RuntimeError(f"Live model provider '{self.provider}' is not configured")
 
     async def embed(self, text: str) -> list[float] | None:
         return None
 
     def attempts_as_dicts(self, attempts):
-        return [attempt.__dict__ for attempt in attempts]
+        return []
 
 
 class ModelGatewayRegistry:
@@ -83,7 +62,6 @@ class ModelGatewayRegistry:
         self.openrouter = OpenAICompatibleGatewayService(settings, provider="openrouter")
         self.qwen = OpenAICompatibleGatewayService(settings, provider="qwen")
         self.google = GoogleGeminiGatewayService(settings)
-        self.local = DeterministicLocalGateway()
 
     def get(self, preferred: str | None = None) -> ModelGateway:
         provider = (preferred or self.settings.default_model_gateway).lower()
@@ -95,7 +73,7 @@ class ModelGatewayRegistry:
             return self.openrouter
         if provider in {"google", "gemini", "vertex"} and self.google.enabled:
             return self.google
-        return self.local
+        return UnavailableGateway(provider)
 
     def descriptors(self) -> list[ModelGatewayDescriptor]:
         return [
@@ -126,12 +104,5 @@ class ModelGatewayRegistry:
                 enabled=self.google.enabled,
                 models=self.google.configured_models,
                 capabilities=["chat", "fallback", "embedding", "adk_reference", "agent_engine_reference"],
-            ),
-            ModelGatewayDescriptor(
-                name="local",
-                provider="Deterministic local development gateway",
-                enabled=True,
-                models=self.local.configured_models,
-                capabilities=["chat", "offline_tests"],
             ),
         ]

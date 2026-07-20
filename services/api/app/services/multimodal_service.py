@@ -15,11 +15,7 @@ from app.services.kb_ingest_service import KbIngestService
 
 
 class MultimodalService:
-    """Multimodal SupportMemory path: image (Qwen-VL) + text memory + optional voice elsewhere.
-
-    Keyless demos use a deterministic vision fallback so judges can still see the
-    multimodal memory lifecycle without DashScope credentials.
-    """
+    """Analyze image evidence with a configured live vision provider."""
 
     def __init__(self, settings: Settings, gateway: Any, kb: Optional[KbIngestService] = None):
         self.settings = settings
@@ -29,27 +25,7 @@ class MultimodalService:
     async def analyze(self, payload: MultimodalAnalyzeRequest) -> MultimodalAnalyzeResponse:
         attachment = payload.attachment
         if attachment.type != "image":
-            # Audio/document: store caption/text path; voice TTS lives on /voice/run-summary.
-            summary = attachment.caption or (
-                f"{attachment.type.title()} attachment accepted "
-                f"({attachment.filename or attachment.mime_type}). "
-                "Transcribe/extract offline or via provider, then ingest text into KB."
-            )
-            signals = self._extract_signals(summary)
-            context_prefix = self._context_prefix(summary, signals, attachment.type)
-            kb_document_id = await self._maybe_ingest(payload, summary)
-            return MultimodalAnalyzeResponse(
-                analysis_id=new_id("mm"),
-                modality=attachment.type,
-                provider="supportmemory-multimodal",
-                model="passthrough",
-                used_fallback=True,
-                summary=summary,
-                extracted_signals=signals,
-                context_prefix=context_prefix,
-                kb_document_id=kb_document_id,
-                note="Non-image modalities are accepted and remembered as text evidence in this build.",
-            )
+            raise RuntimeError(f"Live analysis for {attachment.type} attachments is not configured")
 
         summary, provider, model, used_fallback = await self._analyze_image(payload.prompt, attachment)
         signals = self._extract_signals(summary)
@@ -65,11 +41,7 @@ class MultimodalService:
             extracted_signals=signals,
             context_prefix=context_prefix,
             kb_document_id=kb_document_id,
-            note=(
-                "Live Qwen-VL analysis"
-                if not used_fallback
-                else "Deterministic vision fallback (set QWEN_API_KEY for Qwen-VL)."
-            ),
+            note="Live vision-provider analysis",
         )
 
     async def analyze_attachments(
@@ -144,7 +116,7 @@ class MultimodalService:
                     bool(getattr(result, "used_fallback", False)),
                 )
 
-        return self._fallback_image_summary(attachment, prompt), "local-vision-fallback", "deterministic-vision", True
+        raise RuntimeError("Live vision provider is not configured or no image payload was supplied")
 
     def _image_ref(self, attachment: MultimodalAttachment) -> Optional[str]:
         if attachment.url:
@@ -156,29 +128,6 @@ class MultimodalService:
                 return raw
             return f"data:{mime};base64,{raw}"
         return None
-
-    def _fallback_image_summary(self, attachment: MultimodalAttachment, prompt: str) -> str:
-        caption = attachment.caption or attachment.filename or "support screenshot"
-        lower = f"{caption} {prompt}".lower()
-        if any(token in lower for token in ("payment", "refund", "card", "billing", "charge")):
-            focus = (
-                "Visible payment/billing UI. Likely processor decline or duplicate charge. "
-                "Prefer confirming ticket ID and processor reference before refund approval."
-            )
-        elif any(token in lower for token in ("login", "password", "auth", "2fa")):
-            focus = (
-                "Visible authentication error. Likely session/login failure. "
-                "Do not ask the customer to re-enter secrets already captured in prior tickets."
-            )
-        else:
-            focus = (
-                "Visible product/UI error evidence attached to the support case. "
-                "Preserve screenshot findings in memory and avoid restarting diagnosis from zero."
-            )
-        return (
-            f"Vision fallback summary for '{caption}': {focus} "
-            "Multimodal memory recorded so the next session can recall this evidence."
-        )
 
     def _extract_signals(self, summary: str) -> List[str]:
         signals: list[str] = []
@@ -215,7 +164,7 @@ class MultimodalService:
                 title=title,
                 text=summary,
                 source_type="multimodal",
-                source_system="qwen_vl" if not summary.startswith("Vision fallback") else "vision_fallback",
+                source_system="vision_provider",
                 tags=["multimodal", payload.attachment.type, "supportmemory"],
                 agent_id=payload.agent_id,
                 organisation_id=payload.organisation_id,

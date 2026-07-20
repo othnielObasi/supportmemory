@@ -26,8 +26,7 @@ services:
       DATABASE_URL: postgresql://tracememory:tracememory@postgres:5432/tracememory_dev
       ENVIRONMENT: ${ENVIRONMENT:-development}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
-      DEMO_MODE: ${DEMO_MODE:-true}
-      DEFAULT_MODEL_GATEWAY: ${DEFAULT_MODEL_GATEWAY:-mock}
+      DEFAULT_MODEL_GATEWAY: ${DEFAULT_MODEL_GATEWAY:-qwen}
       MODEL_PROVIDER: ${MODEL_PROVIDER:-}
       QWEN_API_KEY: ${QWEN_API_KEY:-}
       QWEN_MODEL: ${QWEN_MODEL:-qwen-max}
@@ -78,15 +77,6 @@ services:
     build: ./apps/console
     ports:
       - "3000:3000"
-    command: npm run dev -- --host 0.0.0.0 --port 3000 --strictPort
-    depends_on:
-      api:
-        condition: service_started
-
-  ticket-agent-demo:
-    build: ./apps/ticket-agent-demo
-    ports:
-      - "5173:5173"
     command: npm run dev -- --host 0.0.0.0 --port 3000 --strictPort
     depends_on:
       api:

@@ -67,7 +67,7 @@ function App() {
   const [apiLabel, setApiLabel] = useState("Connecting");
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [evidenceOpen, setEvidenceOpen] = useState(true);
+  const [evidenceOpen, setEvidenceOpen] = useState(false);
   const [evidenceTab, setEvidenceTab] = useState<EvidenceTab>("memory");
   const [composerMode, setComposerMode] = useState<ComposerMode>("reply");
   const [draft, setDraft] = useState("");
@@ -135,26 +135,33 @@ function App() {
 
   async function loadLiveInvestigations() {
     try {
-      const state = await api.demoState();
-      const traces = Array.isArray(state.traces) ? state.traces as Record<string, unknown>[] : [];
-      const mapped = traces.slice(0, 30).map<Investigation>((trace) => ({
-        id: String(trace._id || trace.id || uid("trace")),
-        ticket: String(trace.metadata && typeof trace.metadata === "object" ? (trace.metadata as Record<string, unknown>).ticket_id || "TRACE" : "TRACE"),
-        title: String(trace.task_description || "Support investigation"),
-        customer: String(trace.metadata && typeof trace.metadata === "object" ? (trace.metadata as Record<string, unknown>).customer_name || "Support customer" : "Support customer"),
-        company: String(trace.metadata && typeof trace.metadata === "object" ? (trace.metadata as Record<string, unknown>).company || "Customer account" : "Customer account"),
-        priority: "normal",
-        status: String(trace.status).includes("success") ? "resolved" : "open",
-        userId: String(trace.metadata && typeof trace.metadata === "object" ? (trace.metadata as Record<string, unknown>).user_id || uid("customer") : uid("customer")),
-        taskId: String(trace.task_id || ""), traceId: String(trace._id || trace.id || ""),
-        messages: [
-          { message_id: uid("msg"), role: "user", content: String(trace.task_description || "Support investigation"), created_at: String(trace.created_at || "") },
-          { message_id: uid("msg"), role: "assistant", content: String(trace.final_output || "No response was recorded."), created_at: String(trace.created_at || "") },
-        ],
-        rules: [], kbHits: [], graphPaths: [], events: [], updatedAt: Date.parse(String(trace.created_at || "")) || Date.now(),
-      }));
+      const conversations = await api.listWorkspaceConversations();
+      const mapped = conversations.filter((conversation) => {
+        const ticketId = conversation.metadata?.ticket_id;
+        return typeof ticketId === "string" && ticketId.length > 0 && ticketId.toUpperCase() !== "DEMO";
+      }).map<Investigation>((conversation) => {
+        const metadata = conversation.metadata || {};
+        const rawStatus = String(metadata.status || "open").toLowerCase();
+        const status: Status = rawStatus === "resolved" || rawStatus === "escalated" || rawStatus === "pending" ? rawStatus : "open";
+        const rawPriority = String(metadata.priority || "normal").toLowerCase();
+        const priority: Investigation["priority"] = rawPriority === "urgent" || rawPriority === "high" || rawPriority === "low" ? rawPriority : "normal";
+        return {
+          id: conversation.conversation_id,
+          ticket: String(metadata.ticket_id || conversation.conversation_id.slice(-8).toUpperCase()),
+          title: conversation.title || "Support conversation",
+          customer: String(metadata.customer_name || conversation.user_id),
+          company: String(metadata.company || "Customer account"),
+          priority,
+          status,
+          userId: conversation.user_id,
+          conversationId: conversation.conversation_id,
+          messages: conversation.messages || [],
+          rules: [], kbHits: [], graphPaths: [], events: [],
+          updatedAt: Date.parse(String(conversation.updated_at || "")) || Date.now(),
+        };
+      });
       setItems(mapped);
-      if (mapped.length) setActiveId(mapped[0].id);
+      setActiveId((current) => mapped.some((item) => item.id === current) ? current : mapped[0]?.id || "");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Live investigations could not be loaded");
     }
@@ -306,6 +313,12 @@ function App() {
     }
   }
 
+  function signOut() {
+    sessionStorage.removeItem("supportmemory.access_token");
+    ["sm.organisation", "sm.workspace", "sm.project", "sm.environment"].forEach((key) => localStorage.removeItem(key));
+    window.location.assign("/");
+  }
+
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -316,7 +329,7 @@ function App() {
         </div>
         <div className="app-navigation"><div className="workspace-switcher" title={`Organisation ${tenantLabel.organisation} · ${tenantLabel.role}`}><span className="eyebrow">Workspace</span><strong>{tenantLabel.workspace.replace("wrk_", "")}</strong></div><a href="/knowledge.html">Knowledge</a></div>
         <div className={`connection ${apiState}`} role="status"><i />{apiLabel}</div>
-        <div className="avatar-button" aria-label="Signed in operator">OO</div>
+        <div className="account-actions"><div className="avatar-button" aria-label="Signed in operator">OO</div><button onClick={signOut}>Sign out</button></div>
       </header>
 
       <div className="workspace">
@@ -332,16 +345,16 @@ function App() {
           <div className="inbox-foot"><span>Scoped to {tenant.organisationId}</span><span>{tenant.workspaceId}</span></div>
         </aside>
 
-        <main className="conversation" aria-label="Conversation workspace">
+        <main className={`conversation ${active && !active.messages.length ? "conversation-empty" : ""}`} aria-label="Conversation workspace">
           {active ? <>
             <header className="conversation-head">
               <div className="ticket-identity"><div className="customer-avatar" aria-hidden="true">{active.customer.slice(0, 2).toUpperCase()}</div><div><div className="title-row"><h2>{active.title}</h2><StatusPill status={active.status} /></div><p>#{active.ticket} · {active.customer} · {active.company}</p></div></div>
               <div className="head-actions"><button className="secondary-button" onClick={() => setConfirmAction("escalate")}>Escalate</button><button className="primary-button" onClick={() => setConfirmAction("resolve")}>Resolve</button><button className="icon-button" aria-label={evidenceOpen ? "Close evidence" : "Open evidence"} aria-expanded={evidenceOpen} onClick={() => setEvidenceOpen(!evidenceOpen)}>◫</button></div>
             </header>
-            <RunStrip events={active.events} busy={busy} checkpoint={active.checkpointId} />
+            {(busy || active.events.length > 0 || active.checkpointId) && <RunStrip events={active.events} busy={busy} checkpoint={active.checkpointId} />}
             {error && <div className="error-banner" role="alert"><div><strong>Action needed</strong><span>{error}</span></div><button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
             <div className="thread" ref={threadRef} aria-live="polite"><div className="message-stack">
-              {!active.messages.length && <Empty title="Start with the customer’s question" body="SupportMemory will retrieve customer context, policies, learned rules, and related graph evidence before answering." />}
+              {!active.messages.length && <Empty title="How can I help with this customer?" body="Ask a question or paste the customer issue. SupportMemory will retrieve governed context, policies, learned rules, and related evidence before answering." />}
               {active.messages.map((message) => <MessageBubble key={message.message_id} message={message} onEvidence={() => { setEvidenceTab("memory"); setEvidenceOpen(true); }} />)}
               {busy && <Thinking />}
             </div></div>

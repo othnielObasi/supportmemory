@@ -89,6 +89,7 @@ export interface Conversation {
   channel: string;
   message_count: number;
   messages: ConversationMessage[];
+  metadata?: Record<string, unknown>;
   updated_at?: string;
 }
 
@@ -157,11 +158,11 @@ export const api = {
   baseUrl,
   enterpriseContext: () => request<EnterpriseContext>("/api/enterprise/context", {}, 8_000),
   status: () => request<SystemStatus>("/api/system/status", {}, 8_000),
-  demoState: () => request<Record<string, unknown>>("/api/demo/state"),
   getUser: (userId: string, organisationId: string, workspaceId: string) =>
     request<Record<string, unknown>>(`/api/preferences/user/${encodeURIComponent(userId)}?organisation_id=${encodeURIComponent(organisationId)}&workspace_id=${encodeURIComponent(workspaceId)}`),
   listConversations: (userId: string, organisationId: string, workspaceId: string) =>
     request<Conversation[]>(`/api/conversations/user/${encodeURIComponent(userId)}?organisation_id=${encodeURIComponent(organisationId)}&workspace_id=${encodeURIComponent(workspaceId)}`),
+  listWorkspaceConversations: () => request<Conversation[]>("/api/conversations?limit=100"),
   getConversation: (conversationId: string, organisationId: string, workspaceId: string) =>
     request<Conversation>(`/api/conversations/${encodeURIComponent(conversationId)}?organisation_id=${encodeURIComponent(organisationId)}&workspace_id=${encodeURIComponent(workspaceId)}`),
   createConversation: (body: Record<string, unknown>) => request<Conversation>("/api/conversations", { method: "POST", body: JSON.stringify(body) }),

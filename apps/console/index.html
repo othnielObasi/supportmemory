@@ -538,8 +538,8 @@
           <h1>Your customers hate <span class="grad">repeating themselves</span>. So does <span class="ul">your team</span>.</h1>
           <p class="lead">SupportMemory is an AI agent that investigates tickets, remembers every past interaction, and resolves issues faster each time — without ever asking the customer to explain again.</p>
           <div class="hero-ctas">
-            <button class="btn btn-primary" onclick="showPage('dashboard')">Watch a 2-min demo</button>
-            <button class="btn btn-ghost" onclick="showPage('dashboard')">Try free</button>
+            <button class="btn btn-primary" onclick="showPage('dashboard')">Open workspace</button>
+            <button class="btn btn-ghost" onclick="showPage('dashboard')">Sign in</button>
           </div>
         </div>
         <div class="hero-visual">
@@ -554,7 +554,7 @@
         <h2>How it works</h2>
         <p class="sub">Watch the lifecycle of a high-complexity ticket as SupportMemory processes, validates, and archives the resolution.</p>
         <div class="lifecycle">
-          <article><div class="n">1</div><h3>Customer sends a ticket</h3><p>Via Zendesk, Intercom, Freshdesk, or any REST channel.</p></article>
+          <article><div class="n">1</div><h3>Customer sends a ticket</h3><p>Via the REST API or a helpdesk adapter using the documented ticket contract.</p></article>
           <article><div class="n">2</div><h3>Agent loads full context</h3><p>Recalls past interactions and similar issues before planning.</p></article>
           <article><div class="n">3</div><h3>Deep investigation</h3><p>Checks logs, APIs, and docs — with a fail-safe checkpoint trail.</p></article>
           <article><div class="n">4</div><h3>Issue resolved</h3><p>Fixes the issue, notifies the customer, and writes an audit trail.</p></article>
@@ -592,10 +592,10 @@
     <section class="section">
       <div class="section-inner center">
         <span class="eyebrow">Integrations</span>
-        <h2>Works with your helpdesk</h2>
-        <p class="sub">Zendesk / Freshdesk-shaped connectors today. Live CRM later — same contract.</p>
+        <h2>Integration contracts available today</h2>
+        <p class="sub">Connect production systems through the authenticated REST API. Vendor-specific connectors are shown only after a live integration has been implemented and configured.</p>
         <div class="integrations">
-          <span>Zendesk</span><span>Intercom</span><span>Freshdesk</span><span>Slack</span><span>Any REST API</span>
+          <span>REST API · available</span><span>Zendesk · not yet available</span><span>Freshdesk · not yet available</span><span>Intercom · not yet available</span><span>Slack · not yet available</span>
         </div>
       </div>
     </section>
@@ -603,7 +603,7 @@
     <section class="cta-dark">
       <h2>Ready to witness real <span style="color:var(--amber)">self-improving support?</span></h2>
       <p>Open the investigation dashboard and run a recoverable ticket on Qwen Cloud.</p>
-      <button class="btn btn-primary" onclick="showPage('dashboard'); startDemo()">See it resolve a real ticket in 2 minutes</button>
+      <button class="btn btn-primary" onclick="showPage('dashboard')">Start an investigation</button>
     </section>
 
     <footer class="site-footer">
@@ -728,7 +728,7 @@ return { loaded: hits.length, top: hits[0] };</pre>
     <section class="cta-dark">
       <h2>Evaluate SupportMemory in the sandbox</h2>
       <p>Open the dashboard — crash, recover, and inspect memory integrity on Qwen-Max.</p>
-      <button class="btn btn-primary" onclick="showPage('dashboard'); startDemo()">See capabilities in action</button>
+      <button class="btn btn-primary" onclick="showPage('dashboard')">Open the live workspace</button>
     </section>
   </div>
 
@@ -785,7 +785,7 @@ PostgreSQL  ·  DashScope (qwen-max / vl / tts / asr)
           <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2"><path d="M12 3c-2 3-5 4-5 8a5 5 0 0 0 10 0c0-4-3-5-5-8z"/></svg></div>
           SupportMemory
         </div>
-        <button class="btn-new" onclick="newInvestigation()">+ New investigation</button>
+        <button class="btn-new" onclick="showPage('dashboard')">+ New investigation</button>
         <div class="search">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
           <input id="inv-search" placeholder="Search investigations..." oninput="filterInvestigations(this.value)" />
@@ -855,9 +855,7 @@ PostgreSQL  ·  DashScope (qwen-max / vl / tts / asr)
           <div class="metric-row"><span>Memory integrity</span><strong id="metric-mem">—</strong></div>
           <div class="bar"><i id="mem-bar" style="width:0%"></i></div>
         </div>
-        <button class="btn btn-primary" style="width:100%" onclick="startDemo()">Run recovery demo</button>
-        <button class="btn btn-line" style="width:100%" onclick="newInvestigation()">Pull helpdesk ticket</button>
-        <button class="btn btn-line" style="width:100%" onclick="loadLiveState()">Load live runs</button>
+        <button class="btn btn-primary" style="width:100%" onclick="showPage('dashboard')">Open workspace</button>
         <button class="btn btn-line" style="width:100%" onclick="viewReceipt()" id="btn-receipt" disabled>View receipt</button>
       </aside>
     </div>

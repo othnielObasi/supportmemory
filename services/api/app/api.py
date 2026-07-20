@@ -19,12 +19,10 @@ from app.models.schemas import (
     CheckpointRestoreResponse,
     CurateResponse,
     Decision,
-    DemoState,
     FireworksPlanRequest,
     FireworksPlanResponse,
     GatewayHealthResponse,
     MCPGatewayToolResponse,
-    HackathonReadinessResponse,
     GovernanceDecision,
     GraphEdge,
     GraphEdgeRequest,
@@ -38,7 +36,6 @@ from app.models.schemas import (
     VoiceSummaryRequest,
     VoiceSummaryResponse,
     RecoveryStatus,
-    RecoveryDemoResponse,
     RecordEventRequest,
     RecordEventResponse,
     RecordToolTraceRequest,
@@ -56,8 +53,6 @@ from app.models.schemas import (
     KbDocumentSummary,
     KbSearchRequest,
     KbSearchResponse,
-    HelpdeskMockTicketRequest,
-    HelpdeskMockTicketResponse,
     MultimodalAnalyzeRequest,
     MultimodalAnalyzeResponse,
     VoiceTranscribeRequest,
@@ -104,7 +99,6 @@ from app.services.receipt_service import ReceiptService
 from app.services.alibaba_oss_service import AlibabaOSSService
 from app.services.retrieval_service import RetrievalService
 from app.services.kb_ingest_service import KbIngestService
-from app.services.helpdesk_connector import fetch_helpdesk_mock
 from app.services.multimodal_service import MultimodalService
 from app.services.trace_service import TraceService
 from app.services.knowledge_graph_service import KnowledgeGraphService
@@ -407,7 +401,9 @@ async def system_status(svc=Depends(get_services)):
         production_features=[
             'durable_run_events', 'strict_tool_traces', 'resumable_checkpoints', 'checkpoint_restore',
             'task_versions', 'memory_lifecycle', 'idempotency_enforcement', 'governor_decision_records',
-            'sse_run_stream', 'system_status_probe', 'gateway_planning', 'model_fallback_trace', 'failure_injection_demo', 'mcp_gateway_config_probe', 'mcp_tool_trace', 'one_click_hackathon_demo', 'judging_readiness_scorecard', 'qwen_tts', 'qwen_asr', 'multilingual_language_preference', 'user_preferences', 'conversation_history',
+            'sse_run_stream', 'system_status_probe', 'gateway_planning', 'model_routing_trace',
+            'mcp_gateway_config_probe', 'mcp_tool_trace', 'qwen_tts', 'qwen_asr',
+            'multilingual_language_preference', 'user_preferences', 'conversation_history',
         ],
         mcp_ready=settings.mcp_ready,
         model_routing=svc['gateway'].configured_models,
@@ -432,7 +428,7 @@ async def partner_status(svc=Depends(get_services)):
             'Qwen Cloud is used for chat, vision, TTS (Qwen-TTS), and ASR (Qwen-ASR).',
             'Voice language self-adjusts from stored user preference or detected language.',
             'SupportMemory records gateway attempts, fallback use, checkpoints, and recovery state.',
-            'MCP Gateway can be enabled with MCP_GATEWAY_URL and MCP_GATEWAY_API_KEY; local deterministic fallback keeps the same trace shape for demos.',
+            'MCP Gateway requires MCP_GATEWAY_URL and MCP_GATEWAY_API_KEY before external tools are available.',
         ],
     )
 
@@ -597,28 +593,42 @@ async def upsert_user_preference(payload: UserPreferenceRequest, svc=Depends(get
 
 
 @router.post('/conversations', response_model=ConversationResponse)
-async def create_conversation(payload: ConversationCreateRequest, svc=Depends(get_services)):
+async def create_conversation(payload: ConversationCreateRequest, principal: EnterprisePrincipal = Depends(principal_dependency), svc=Depends(get_services)):
+    principal.require(['runs:write'])
     conv = await svc['conversations'].create(
         payload.user_id,
         title=payload.title,
         channel=payload.channel,
         metadata=payload.metadata,
-        organisation_id=payload.organisation_id,
-        workspace_id=payload.workspace_id,
+        organisation_id=principal.organisation_id,
+        workspace_id=principal.workspace_id,
     )
     return ConversationResponse(**conv)
 
 
+@router.get('/conversations', response_model=list[ConversationResponse])
+async def list_workspace_conversations(limit: int = 50, principal: EnterprisePrincipal = Depends(principal_dependency), svc=Depends(get_services)):
+    principal.require(['runs:read'])
+    rows = await svc['conversations'].list_for_workspace(
+        limit=min(max(limit, 1), 100),
+        organisation_id=principal.organisation_id,
+        workspace_id=principal.workspace_id,
+    )
+    return [ConversationResponse(**row) for row in rows]
+
+
 @router.get('/conversations/user/{user_id}', response_model=list[ConversationSummary])
-async def list_user_conversations(user_id: str, limit: int = 20, organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
-    rows = await svc['conversations'].list_for_user(user_id, limit=min(max(limit, 1), 50), organisation_id=organisation_id, workspace_id=workspace_id)
+async def list_user_conversations(user_id: str, limit: int = 20, principal: EnterprisePrincipal = Depends(principal_dependency), svc=Depends(get_services)):
+    principal.require(['runs:read'])
+    rows = await svc['conversations'].list_for_user(user_id, limit=min(max(limit, 1), 50), organisation_id=principal.organisation_id, workspace_id=principal.workspace_id)
     return [ConversationSummary(**row) for row in rows]
 
 
 @router.get('/conversations/{conversation_id}', response_model=ConversationResponse)
-async def get_conversation(conversation_id: str, organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
+async def get_conversation(conversation_id: str, principal: EnterprisePrincipal = Depends(principal_dependency), svc=Depends(get_services)):
+    principal.require(['runs:read'])
     try:
-        return ConversationResponse(**(await svc['conversations'].get(conversation_id, organisation_id, workspace_id)))
+        return ConversationResponse(**(await svc['conversations'].get(conversation_id, principal.organisation_id, principal.workspace_id)))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -627,18 +637,18 @@ async def get_conversation(conversation_id: str, organisation_id: str = 'org_def
 async def append_conversation_message(
     conversation_id: str,
     payload: ConversationMessageRequest,
-    organisation_id: str = 'org_default',
-    workspace_id: str = 'wrk_default',
+    principal: EnterprisePrincipal = Depends(principal_dependency),
     svc=Depends(get_services),
 ):
+    principal.require(['runs:write'])
     try:
         conv = await svc['conversations'].append_message(
             conversation_id,
             role=payload.role,
             content=payload.content,
             metadata=payload.metadata,
-            organisation_id=organisation_id,
-            workspace_id=workspace_id,
+            organisation_id=principal.organisation_id,
+            workspace_id=principal.workspace_id,
         )
         return ConversationResponse(**conv)
     except KeyError as exc:
@@ -933,51 +943,6 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
     )
 
 
-@router.post('/demo/failure-recovery', response_model=RecoveryDemoResponse)
-async def run_failure_recovery_demo(svc=Depends(get_services)):
-    demo_payload = RunTaskRequest(
-        task_description='Investigate support tickets, survive a simulated primary model failure, and produce an auditable recovery report.',
-        agent_id='ticket-investigation-agent',
-        dataset_type='support_tickets',
-        simulate_restart=True,
-        simulate_model_failure=True,
-        idempotency_key=new_id('demo-idem'),
-    )
-    task_response = await run_task(demo_payload, Response(), svc)
-    model_trace = task_response.model_trace or {}
-    attempts = model_trace.get('plan_attempts', []) + model_trace.get('final_report_attempts', [])
-    final_report = task_response.investigation_report or task_response.final_output
-    return RecoveryDemoResponse(
-        task_response=task_response,
-        final_report=final_report,
-        gateway_attempts=attempts,
-        demo_steps=[
-            'SupportMemory started a durable support-ticket run.',
-            'Primary model failure was intentionally injected before planning.',
-            'Provider-agnostic mock gateway injected a failure and SupportMemory recorded the recovery path.',
-            'PostgreSQL checkpoint state was saved with task, context, tool, and recovery metadata.',
-            'The final report includes the task contract, checkpoint, tool evidence, recovery path, and receipt summary.',
-        ],
-    )
-
-
-@router.post('/demo/recovery-run')
-async def run_recovery_run_alias(svc=Depends(get_services)):
-    """Hackathon alias: same one-click recovery story, friendlier endpoint name."""
-    return await run_failure_recovery_demo(svc)
-
-
-@router.get('/demo/recovery-run/{run_id}')
-async def get_recovery_run_alias(run_id: str):
-    """Lightweight hackathon read endpoint for remote judges and frontend probes."""
-    return {
-        'run_id': run_id,
-        'status': 'available_after_post',
-        'message': 'Use POST /api/demo/recovery-run or POST /api/demo/failure-recovery to generate a fresh recovery demo run.',
-    }
-
-
-@router.post('/mcp/gateway/test', response_model=MCPGatewayToolResponse)
 async def test_mcp_gateway(svc=Depends(get_services)):
     result = await svc['mcp_gateway'].call_tool(
         tool_name='ticket_lookup',
@@ -994,7 +959,6 @@ async def test_mcp_gateway(svc=Depends(get_services)):
     )
 
 
-@router.post('/demo/coding-agent-memory-lesson')
 async def run_coding_agent_memory_lesson(svc=Depends(get_services)):
     """The actual Track 1 story, made real: a run fails, SupportMemory reflects on the
     real trace, curates a durable rule, and a second run retrieves and applies it
@@ -1040,7 +1004,6 @@ async def run_coding_agent_memory_lesson(svc=Depends(get_services)):
     }
 
 
-@router.post('/demo/hackathon-10x', response_model=HackathonReadinessResponse)
 async def run_hackathon_10x_demo(svc=Depends(get_services)):
     demo = await run_failure_recovery_demo(svc)
     mcp_result = await svc['mcp_gateway'].call_tool(
@@ -1496,46 +1459,7 @@ async def traverse_graph(payload: GraphTraverseRequest, svc=Depends(get_services
     )
 
 
-@router.post('/kb/seed-demo')
-async def seed_kb_demo(svc=Depends(get_services)):
-    seeded = await svc['kb'].seed_demo()
-    return {
-        'seeded': len(seeded),
-        'documents': [
-            {'document_id': item.document_id, 'title': item.title, 'chunk_count': item.chunk_count}
-            for item in seeded
-        ],
-        'note': 'Idempotent — skips if KB documents already exist. Text ingest is real; embeddings use hash provider when keyless.',
-    }
-
-
-@router.post('/connectors/helpdesk/mock', response_model=HelpdeskMockTicketResponse)
-async def helpdesk_mock_connector(payload: HelpdeskMockTicketRequest):
-    """Zendesk/Freshdesk-shaped mock source for SupportMemory demos."""
-    return fetch_helpdesk_mock(payload)
-
-
 @router.post('/multimodal/analyze', response_model=MultimodalAnalyzeResponse)
 async def analyze_multimodal(payload: MultimodalAnalyzeRequest, svc=Depends(get_services)):
     """Analyze image/audio/document evidence for SupportMemory (Qwen-VL when keyed)."""
     return await svc['multimodal'].analyze(payload)
-
-
-@router.get('/demo/state', response_model=DemoState)
-async def demo_state(svc=Depends(get_services)):
-    traces = await svc['trace'].list(limit=25)
-    reflections = await svc['reflection'].list(limit=25)
-    rules = await svc['curation'].list_rules(limit=50)
-    retrieval_docs = await svc['store'].find_many('retrieval_events', limit=25, sort=[('created_at', DESCENDING)])
-    checkpoint_docs = await svc['store'].find_many('task_checkpoints', limit=25, sort=[('created_at', DESCENDING)])
-    version_docs = await svc['store'].find_many('task_versions', limit=25, sort=[('created_at', DESCENDING)])
-    retrievals = [RetrievalEvent.model_validate(doc) for doc in retrieval_docs]
-    checkpoints = [TaskCheckpoint.model_validate(doc) for doc in checkpoint_docs]
-    versions = [TaskVersion.model_validate(doc) for doc in version_docs]
-    return DemoState(traces=traces, reflections=reflections, playbook_rules=rules, retrieval_events=retrievals, task_checkpoints=checkpoints, task_versions=versions)
-
-
-@router.post('/demo/reset')
-async def reset_demo(svc=Depends(get_services)):
-    await svc['store'].delete_all()
-    return {'status': 'reset'}

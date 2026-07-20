@@ -25,14 +25,15 @@ def test_default_gateway_prefers_qwen_when_configured():
     assert gateway is registry.qwen
 
 
-def test_default_gateway_falls_back_to_local_without_any_keys():
+def test_default_gateway_fails_closed_without_any_keys():
     settings = Settings(
         QWEN_API_KEY=None, OPENAI_API_KEY=None, OPENROUTER_API_KEY=None,
         GEMINI_API_KEY=None, DEFAULT_MODEL_GATEWAY="qwen",
     )
     registry = ModelGatewayRegistry(settings)
     gateway = registry.get()
-    assert gateway is registry.local
+    assert gateway.enabled is False
+    assert gateway.configured_models["primary"] == "qwen-not-configured"
 
 
 def test_alibaba_oss_disabled_without_credentials():

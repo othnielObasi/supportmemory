@@ -28,7 +28,10 @@ async def poll_once() -> None:
 
 async def main() -> None:
     while True:
-        await poll_once()
+        try:
+            await poll_once()
+        except Exception as exc:  # noqa: BLE001 - keep polling through transient API/network errors
+            print(f"[tracememory-worker] poll failed, will retry: {exc}")
         await asyncio.sleep(POLL_SECONDS)
 
 

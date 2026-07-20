@@ -45,6 +45,8 @@ services:
   recovery-worker:
     build: ./services/api
     command: python /app/workers/recovery-worker/main.py
+    healthcheck:
+      disable: true
     environment:
       TRACEMEMORY_API_BASE_URL: http://api:8000
       TRACEMEMORY_WORKER_API_KEY: ${TRACEMEMORY_WORKER_API_KEY:-}

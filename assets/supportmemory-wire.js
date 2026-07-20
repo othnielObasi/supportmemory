@@ -178,6 +178,9 @@
       refreshKbDocs();
       loadProfile(activeInv());
     }
+    if (id === "knowledge") {
+      refreshKbDocs();
+    }
     window.scrollTo(0, 0);
     history.replaceState(null, "", "#" + id);
   };
@@ -235,8 +238,8 @@
       .join("\n");
   }
 
-  function renderKbHits(hits) {
-    const box = document.getElementById("kb-hits");
+  function renderKbHits(hits, targetId = "kb-hits") {
+    const box = document.getElementById(targetId);
     if (!box) return;
     if (!hits || !hits.length) {
       box.innerHTML = "";
@@ -334,7 +337,7 @@
         : inv.match;
     document.getElementById("mem-note").textContent = top
       ? `Top hit: ${top.title} (${top.document_id || top.chunk_id || "kb"})`
-      : "Seed demo KB + Search, or ask in the composer (tasks/run retrieves KB automatically).";
+      : "KB hits load automatically while SupportMemory investigates.";
     renderKbHits(inv.kbHits);
 
     document.getElementById("ckpt-label").textContent = inv.checkpointId
@@ -752,17 +755,14 @@
   };
 
   window.searchKb = async function () {
-    const q = (document.getElementById("kb-query")?.value || activeInv().request || "").trim();
+    const q = (document.getElementById("kb-query")?.value || "").trim();
     if (q.length < 3) return toast("Enter a longer KB query");
     setBusy(true);
     try {
       const res = await apiPost("/api/kb/search", { query: q, agent_id: AGENT_ID, top_k: 5 });
-      const inv = activeInv();
-      inv.kbHits = res.hits || [];
-      inv.match = inv.kbHits[0] ? ((inv.kbHits[0].score || 0) * 100).toFixed(1) + "%" : "—";
-      renderDashboard();
+      renderKbHits(res.hits || [], "kb-page-hits");
       setApiPill(true, "API live");
-      toast(`${inv.kbHits.length} KB hits`);
+      toast(`${(res.hits || []).length} KB hits`);
     } catch (e) {
       toast("KB search failed");
       setApiPill(false, "API offline");
@@ -857,6 +857,6 @@
     if (btn) btn.textContent = "Show Inspector";
   }
   const hash = (location.hash || "#landing").replace("#", "");
-  const known = ["landing", "capabilities", "architecture", "dashboard"];
+  const known = ["landing", "capabilities", "architecture", "dashboard", "knowledge"];
   showPage(known.includes(hash) ? hash : "landing");
 })();

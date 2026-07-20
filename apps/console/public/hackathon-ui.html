@@ -435,13 +435,35 @@
     }
     .kb-hit strong { display: block; margin-bottom: 4px; color: var(--ink); }
     .kb-hit .score { color: var(--amber); font-family: var(--mono); font-size: 11px; }
-    .kb-actions { display: flex; flex-direction: column; gap: 8px; }
-    .kb-actions textarea, .kb-actions input[type="text"] {
-      width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px;
-      font: inherit; font-size: 12px; resize: vertical; min-height: 56px;
-    }
     .kb-docs { max-height: 120px; overflow: auto; font-size: 12px; color: var(--muted); }
     .kb-docs li { margin: 4px 0; }
+
+    /* —— Sidebar nav item (pinned below the investigation list) —— */
+    .side-nav-item {
+      display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: #fff;
+      color: var(--ink-soft); font-size: 13px; font-weight: 600; padding: 10px 14px; border-radius: 10px; cursor: pointer;
+    }
+    .side-nav-item:hover { border-color: var(--amber); color: var(--amber); }
+
+    /* —— Knowledge Base (settings-style) page —— */
+    .kb-page-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; padding: 0 24px 80px; }
+    .kb-card { background: #fff; border: 1px solid var(--line); border-radius: 16px; padding: 28px; }
+    .kb-card h3 { margin: 0 0 16px; font-size: 16px; }
+    .kb-card textarea, .kb-card input[type="text"] {
+      width: 100%; border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
+      font: inherit; font-size: 13px; margin-top: 12px; outline: none;
+    }
+    .kb-card textarea:focus, .kb-card input[type="text"]:focus { border-color: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+    .kb-card textarea { resize: vertical; min-height: 100px; }
+    .kb-card .kb-docs { max-height: 260px; font-size: 13px; }
+    .kb-card .hit-list { max-height: 260px; }
+    .kb-card-divider {
+      margin: 20px 0 14px; padding-top: 20px; border-top: 1px solid var(--line);
+      font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted);
+    }
+    .kb-search-row { display: flex; gap: 8px; }
+    .kb-search-row input { margin-top: 0; flex: 1; }
+    .kb-search-row button { flex: 0 0 auto; padding: 0 20px; border-radius: 8px; }
     .api-pill {
       display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 10px;
       padding: 3px 8px; border-radius: 999px; background: #fee2e2; color: #991b1b;
@@ -452,7 +474,7 @@
     .hit-list { max-height: 180px; overflow: auto; }
 
     @media (max-width: 1100px) {
-      .hero-grid, .feature-grid, .split { grid-template-columns: 1fr; }
+      .hero-grid, .feature-grid, .split, .kb-page-grid { grid-template-columns: 1fr; }
       .lifecycle { grid-template-columns: 1fr 1fr; }
       .dash, .dash.hide-inspector { grid-template-columns: 220px 1fr; }
       .inspector { display: none; }
@@ -752,6 +774,10 @@ PostgreSQL  ·  DashScope (qwen-max / vl / tts / asr)
         </div>
         <div class="inv-label">Investigations</div>
         <div class="inv-list" id="inv-list"></div>
+        <button type="button" class="side-nav-item" onclick="showPage('knowledge')">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Knowledge Base
+        </button>
       </aside>
 
       <section class="main">
@@ -795,24 +821,9 @@ PostgreSQL  ·  DashScope (qwen-max / vl / tts / asr)
         <div class="panel">
           <h3>Memory retrieval (KB)</h3>
           <div class="big" id="mem-match">—</div>
-          <p id="mem-note">Seed or search the knowledge base to load real hits into this investigation.</p>
+          <p id="mem-note">KB hits load automatically while SupportMemory investigates.</p>
           <div class="hit-list" id="kb-hits"></div>
-        </div>
-        <div class="panel">
-          <h3>Knowledge base</h3>
-          <div class="kb-actions">
-            <button class="btn btn-line" style="width:100%;padding:8px" onclick="seedKb()">Seed demo KB</button>
-            <input type="text" id="kb-query" placeholder="Search KB…" onkeydown="if(event.key==='Enter')searchKb()" />
-            <button class="btn btn-dark" style="width:100%;padding:8px" onclick="searchKb()">Search KB</button>
-            <textarea id="kb-ingest-text" placeholder="Paste policy / SOP text to ingest (≥20 chars)"></textarea>
-            <input type="text" id="kb-ingest-title" placeholder="Document title" />
-            <button class="btn btn-line" style="width:100%;padding:8px" onclick="ingestKbText()">Ingest text</button>
-            <label class="btn btn-line" style="width:100%;padding:8px;cursor:pointer;text-align:center">
-              Upload PDF
-              <input type="file" id="kb-pdf" accept=".pdf,application/pdf" hidden onchange="ingestKbPdf(this)" />
-            </label>
-            <ul class="kb-docs" id="kb-docs"><li>No documents loaded</li></ul>
-          </div>
+          <button class="btn btn-line" style="width:100%;padding:8px;margin-top:10px" onclick="showPage('knowledge')">Manage Knowledge Base →</button>
         </div>
         <div class="panel">
           <h3>Checkpoint</h3>
@@ -840,6 +851,51 @@ PostgreSQL  ·  DashScope (qwen-max / vl / tts / asr)
       </div>
       <div id="sys-right">Connect API to load live memory</div>
     </footer>
+  </div>
+
+  <!-- KNOWLEDGE BASE (settings-style page, kept out of the Live Inspector) -->
+  <div class="page" id="page-knowledge">
+    <header class="m-header">
+      <nav class="mnav">
+        <div class="brand" onclick="showPage('landing')">
+          <div class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#111827" stroke-width="2"><path d="M12 3c-2 3-5 4-5 8a5 5 0 0 0 10 0c0-4-3-5-5-8z"/></svg></div>
+          SupportMemory
+        </div>
+        <div class="mnav-links">
+          <a href="#" onclick="showPage('dashboard')">← Back to Dashboard</a>
+        </div>
+        <button class="btn btn-dark" onclick="showPage('dashboard')">Dashboard</button>
+      </nav>
+    </header>
+    <div class="page-head section-inner">
+      <span class="eyebrow">Settings</span>
+      <h1>Knowledge Base</h1>
+      <p>Policies and SOPs SupportMemory retrieves from before answering. Ingest once here — every investigation searches it automatically.</p>
+    </div>
+    <div class="section-inner kb-page-grid">
+      <div class="kb-card">
+        <h3>Add knowledge</h3>
+        <button class="btn btn-line" style="width:100%;padding:10px" onclick="seedKb()">Seed demo KB</button>
+        <div class="kb-card-divider">or add your own</div>
+        <textarea id="kb-ingest-text" placeholder="Paste policy / SOP text to ingest (≥20 chars)"></textarea>
+        <input type="text" id="kb-ingest-title" placeholder="Document title" />
+        <button class="btn btn-line" style="width:100%;padding:10px" onclick="ingestKbText()">Ingest text</button>
+        <label class="btn btn-line" style="width:100%;padding:10px;cursor:pointer;text-align:center">
+          Upload PDF
+          <input type="file" id="kb-pdf" accept=".pdf,application/pdf" hidden onchange="ingestKbPdf(this)" />
+        </label>
+      </div>
+      <div class="kb-card">
+        <h3>Search &amp; library</h3>
+        <div class="kb-search-row">
+          <input type="text" id="kb-query" placeholder="Search the knowledge base…" onkeydown="if(event.key==='Enter')searchKb()" />
+          <button class="btn btn-dark" onclick="searchKb()">Search</button>
+        </div>
+        <div class="hit-list" id="kb-page-hits"></div>
+        <div class="kb-card-divider">Documents</div>
+        <ul class="kb-docs" id="kb-docs"><li>No documents loaded</li></ul>
+      </div>
+    </div>
   </div>
 
   <div class="toast" id="toast"></div>

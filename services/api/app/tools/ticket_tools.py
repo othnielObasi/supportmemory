@@ -2,6 +2,21 @@ from __future__ import annotations
 
 from typing import Dict, Optional
 
+REQUESTERS = {
+    's1': {'name': 'Priya Shah', 'email': 'priya.shah@acme.io', 'company': 'Acme Corp'},
+    's2': {'name': 'Marcus Webb', 'email': 'marcus.webb@northwind.io', 'company': 'Northwind Retail'},
+    's3': {'name': 'Priya Shah', 'email': 'priya.shah@acme.io', 'company': 'Acme Corp'},
+    's4': {'name': 'Elena Torres', 'email': 'elena.torres@brightpath.io', 'company': 'Brightpath Media'},
+    's5': {'name': 'Marcus Webb', 'email': 'marcus.webb@northwind.io', 'company': 'Northwind Retail'},
+    's6': {'name': 'Priya Shah', 'email': 'priya.shah@acme.io', 'company': 'Acme Corp'},
+    'c1': {'name': 'David Okafor', 'email': 'david.okafor@vertex-labs.io', 'company': 'Vertex Labs'},
+    'c2': {'name': 'Hana Kobayashi', 'email': 'hana.kobayashi@quillfin.io', 'company': 'Quillfin'},
+    'c3': {'name': 'David Okafor', 'email': 'david.okafor@vertex-labs.io', 'company': 'Vertex Labs'},
+    'c4': {'name': 'Hana Kobayashi', 'email': 'hana.kobayashi@quillfin.io', 'company': 'Quillfin'},
+    'c5': {'name': 'David Okafor', 'email': 'david.okafor@vertex-labs.io', 'company': 'Vertex Labs'},
+    'c6': {'name': 'Hana Kobayashi', 'email': 'hana.kobayashi@quillfin.io', 'company': 'Quillfin'},
+}
+
 DATASETS = {
     'support_tickets': {
         None: {'items': [{'id': 's1', 'issue': 'billing delay', 'severity': 'medium'}, {'id': 's2', 'issue': 'login failure', 'severity': 'high'}], 'next_page_token': 'support_page_2'},
@@ -14,6 +29,10 @@ DATASETS = {
         'compliance_page_3': {'items': [{'id': 'c5', 'issue': 'audit log missing', 'severity': 'high'}, {'id': 'c6', 'issue': 'missing approval evidence', 'severity': 'low'}], 'next_page_token': None},
     },
 }
+for _dataset in DATASETS.values():
+    for _page in _dataset.values():
+        for _item in _page['items']:
+            _item['requester'] = REQUESTERS.get(_item['id'])
 
 
 def fetch_tickets(dataset_type: str, page_token: Optional[str] = None) -> Dict:

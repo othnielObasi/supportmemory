@@ -302,27 +302,85 @@
     .step-line { width: 18px; height: 2px; background: var(--line); margin: 0 6px; flex: 0 0 18px; }
     .step.done + .step-line, .step.current + .step-line { background: #fcd34d; }
 
-    .thread { flex: 1; overflow: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
-    .msg { max-width: 720px; }
+    /* —— Customer identity card —— */
+    .customer-card {
+      display: flex; gap: 14px; align-items: center; padding: 14px 28px; border-bottom: 1px solid var(--line); background: #fff;
+    }
+    .avatar {
+      width: 36px; height: 36px; border-radius: 50%; flex: 0 0 36px; display: grid; place-items: center;
+      font-size: 13px; font-weight: 700; background: var(--surface-2); color: var(--ink-soft);
+    }
+    .cust-avatar { width: 44px; height: 44px; flex: 0 0 44px; font-size: 15px; background: var(--navy); color: #fff; }
+    .cust-meta { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .cust-name { font-size: 15px; font-weight: 700; }
+    .cust-company { color: var(--muted); font-weight: 500; font-size: 13px; }
+    .cust-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chip {
+      display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px;
+      font-size: 11px; font-weight: 700; background: var(--surface-2); color: var(--ink-soft); white-space: nowrap;
+    }
+    .chip-tier { background: #eef2ff; color: #4338ca; }
+    .chip-priority-high, .chip-priority-urgent { background: #fee2e2; color: #991b1b; }
+    .chip-priority-medium, .chip-priority-normal { background: #fef3c7; color: #92400e; }
+    .chip-priority-low { background: #ecfdf5; color: #047857; }
+    .chip-recall-known { background: #ecfdf5; color: #047857; }
+    .chip-recall-new { background: var(--surface-2); color: var(--muted); }
+
+    /* —— Thread / messages —— */
+    .thread { flex: 1; overflow: auto; padding: 24px 28px; display: flex; flex-direction: column; gap: 18px; }
+    .msg-row { display: flex; gap: 12px; align-items: flex-start; max-width: 760px; }
+    .msg-row.agent .avatar { background: var(--amber); color: #fff; font-size: 15px; }
+    .msg { min-width: 0; flex: 1; }
     .msg .who { font-size: 13px; font-weight: 600; margin-bottom: 6px; display: flex; gap: 8px; align-items: center; }
-    .msg .who span { color: var(--muted); font-weight: 500; }
+    .msg-time { margin-left: auto; color: var(--muted); font-weight: 500; font-size: 12px; }
     .msg .bubble {
       background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 16px 18px;
-      font-size: 14px; color: var(--ink-soft);
+      font-size: 14px; color: var(--ink-soft); white-space: pre-wrap;
     }
-    .msg.agent .bubble { background: #fff; }
+    .msg-row.agent .bubble { background: #fff; }
+    .msg-row.note .bubble {
+      background: #fffbeb; border: 1px solid #fde68a; border-left: 3px solid var(--amber); color: #78350f;
+    }
     .tag-inv {
       display: inline-flex; padding: 2px 8px; border-radius: 999px; background: #fff7ed; color: #c2410c;
       font-size: 11px; font-weight: 700; letter-spacing: .03em;
     }
+    .tag-note {
+      display: inline-flex; padding: 2px 8px; border-radius: 999px; background: #fef3c7; color: #92400e;
+      font-size: 11px; font-weight: 700; letter-spacing: .03em;
+    }
+    .evidence { margin-top: 10px; }
+    .evidence summary {
+      cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted); list-style: none;
+    }
+    .evidence summary::-webkit-details-marker { display: none; }
+    .evidence summary:hover { color: var(--amber); }
+    .evidence[open] summary { margin-bottom: 8px; }
     .log {
-      margin-top: 12px; background: #0b1220; color: #e2e8f0; border-radius: 10px; padding: 14px 16px;
+      background: #0b1220; color: #e2e8f0; border-radius: 10px; padding: 14px 16px;
       font-family: var(--mono); font-size: 12px; line-height: 1.7; overflow-x: auto;
     }
     .log .w { color: #fbbf24; }
     .log .e { color: #f87171; }
+
+    /* —— Composer —— */
+    .composer-wrap { border-top: 1px solid var(--line); }
+    .composer-mode {
+      display: flex; align-items: center; gap: 6px; padding: 10px 28px 0;
+    }
+    .composer-mode button {
+      border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700;
+      padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    }
+    .composer-mode button.active { background: var(--surface-2); color: var(--ink); }
+    .composer-mode .quick-actions { margin-left: auto; display: flex; gap: 6px; }
+    .chip-btn {
+      border: 1px solid var(--line); background: #fff; color: var(--ink-soft); font-size: 12px; font-weight: 600;
+      padding: 6px 12px; border-radius: 999px; cursor: pointer;
+    }
+    .chip-btn:hover { border-color: var(--amber); color: var(--amber); }
     .composer {
-      border-top: 1px solid var(--line); padding: 16px 28px 20px; display: flex; gap: 10px; align-items: center;
+      padding: 12px 28px 20px; display: flex; gap: 10px; align-items: center;
     }
     .composer input {
       flex: 1; border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; outline: none;
@@ -694,15 +752,26 @@ PostgreSQL  ·  DashScope (qwen-max / vl / tts / asr)
             <h1 id="ticket-title">Ticket #TX-4891 <span class="badge-ok">Active</span></h1>
             <p id="ticket-sub">API auth failure — Apex Cloud Corp</p>
           </div>
-          <button class="btn btn-line" id="inspector-toggle" onclick="toggleInspector()">Inspector Open</button>
+          <button class="btn btn-line" id="inspector-toggle" onclick="toggleInspector()">Hide Inspector</button>
         </div>
+        <div class="customer-card" id="customer-card"></div>
         <div class="steps" id="steps"></div>
         <div class="thread" id="thread"></div>
-        <div class="composer">
-          <input id="composer" placeholder="Ask SupportMemory to take action..." onkeydown="if(event.key==='Enter')sendComposer()" />
-          <button class="send" onclick="sendComposer()" aria-label="Send">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
-          </button>
+        <div class="composer-wrap">
+          <div class="composer-mode">
+            <button type="button" class="active" data-mode="reply" onclick="setComposerMode('reply')">Reply to customer</button>
+            <button type="button" data-mode="note" onclick="setComposerMode('note')">Internal note</button>
+            <span class="quick-actions">
+              <button type="button" class="chip-btn" onclick="quickAction('escalate')">Escalate</button>
+              <button type="button" class="chip-btn" onclick="quickAction('resolve')">Resolve</button>
+            </span>
+          </div>
+          <div class="composer">
+            <input id="composer" placeholder="Ask SupportMemory to take action..." onkeydown="if(event.key==='Enter')sendComposer()" />
+            <button class="send" onclick="sendComposer()" aria-label="Send">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+            </button>
+          </div>
         </div>
       </section>
 

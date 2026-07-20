@@ -19,13 +19,30 @@ services:
     build: ./services/api
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       APP_NAME: SupportMemory
-      DATABASE_URL: ${DATABASE_URL:-postgresql://tracememory:tracememory@postgres:5432/tracememory_dev}
+      DATABASE_URL: postgresql://tracememory:tracememory@postgres:5432/tracememory_dev
       ENVIRONMENT: ${ENVIRONMENT:-development}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       DEMO_MODE: ${DEMO_MODE:-true}
       DEFAULT_MODEL_GATEWAY: ${DEFAULT_MODEL_GATEWAY:-mock}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-}
+      QWEN_API_KEY: ${QWEN_API_KEY:-}
+      QWEN_MODEL: ${QWEN_MODEL:-qwen-max}
+      QWEN_BASE_URL: ${QWEN_BASE_URL:-https://dashscope-intl.aliyuncs.com/compatible-mode/v1}
+      QWEN_VL_MODEL: ${QWEN_VL_MODEL:-qwen-vl-max}
+      QWEN_TTS_MODEL: ${QWEN_TTS_MODEL:-qwen3-tts-flash}
+      QWEN_ASR_MODEL: ${QWEN_ASR_MODEL:-qwen3-asr-flash}
+      QWEN_EMBEDDING_MODEL: ${QWEN_EMBEDDING_MODEL:-text-embedding-v3}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-auto}
+      RUNTIME_GOVERNOR_PII_MODE: ${RUNTIME_GOVERNOR_PII_MODE:-hybrid}
+      ALIBABA_ACCESS_KEY_ID: ${ALIBABA_ACCESS_KEY_ID:-}
+      ALIBABA_ACCESS_KEY_SECRET: ${ALIBABA_ACCESS_KEY_SECRET:-}
+      ALIBABA_OSS_BUCKET: ${ALIBABA_OSS_BUCKET:-}
+      ALIBABA_OSS_ENDPOINT: ${ALIBABA_OSS_ENDPOINT:-}
+      ALIBABA_OSS_REGION: ${ALIBABA_OSS_REGION:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

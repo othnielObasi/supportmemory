@@ -20,11 +20,12 @@ def fetch_helpdesk_mock(payload: HelpdeskMockTicketRequest) -> HelpdeskMockTicke
     comments: List[Dict[str, Any]] = []
     for idx, item in enumerate(items[:5]):
         body = item.get("issue") or item.get("summary") or item.get("description") or str(item)
+        requester = item.get("requester") or {}
         comments.append(
             {
                 "id": f"cmt_{idx + 1}",
                 "ticket_id": ticket_id,
-                "author": item.get("requester") or item.get("customer") or "customer",
+                "author": requester.get("name") or item.get("customer") or "customer",
                 "body": body,
                 "public": True,
             }
@@ -37,6 +38,7 @@ def fetch_helpdesk_mock(payload: HelpdeskMockTicketRequest) -> HelpdeskMockTicke
         "status": primary.get("status") or "open",
         "priority": primary.get("severity") or primary.get("priority") or "normal",
         "tags": primary.get("tags") or ["supportmemory", payload.source_system],
+        "requester": primary.get("requester"),
         "custom_fields": {
             "dataset_type": payload.dataset_type,
             "records_in_page": len(items),

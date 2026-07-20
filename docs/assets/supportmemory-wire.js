@@ -8,8 +8,14 @@
     company: "Apex Cloud",
     ticket: "TX-4891",
     status: "Sample",
-    customer: "Sarah Jenkins · Client Advocate @ Apex Cloud",
+    customer: "Sarah Jenkins",
+    requesterName: "Sarah Jenkins",
+    requesterEmail: "sarah.jenkins@apexcloud.io",
+    requesterCompany: "Apex Cloud",
+    channel: "email",
+    priority: "high",
     request: "We're seeing recurring 401 Unauthorized errors on our webhook endpoint after rotating the signing secret yesterday. Can you find the root cause?",
+    requestAt: Date.now(),
     agent: "Sample thread — use Ask SupportMemory, Seed demo KB, or Run recovery demo to hit the live API.",
     log: "Waiting for live run…",
     messages: [],
@@ -58,29 +64,77 @@
     return r.json();
   }
 
-  function userId() {
-    const key = "supportmemory_user_id";
-    let id = localStorage.getItem(key);
-    if (!id) {
-      id = "user_" + Math.random().toString(36).slice(2, 10);
-      localStorage.setItem(key, id);
-    }
-    return id;
+  function slugify(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
   }
+
+  // The customer is the identity SupportMemory should recall preferences/history for —
+  // derived from the ticket's requester, not the operator's browser session, so each
+  // customer's memory stays correctly separated from every other customer's.
+  function customerUserId(inv) {
+    const key = inv.requesterEmail || inv.customer || inv.id;
+    return "cust_" + slugify(key).slice(0, 48) || "cust_unknown";
+  }
+
+  function initials(name) {
+    const parts = String(name || "?").trim().split(/\s+/);
+    return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "?";
+  }
+
+  function fmtTime(iso) {
+    try {
+      return new Date(iso || Date.now()).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch (_) {
+      return "";
+    }
+  }
+
+  const CHANNEL_LABEL = { email: "Email", chat: "Chat", phone: "Phone", sms: "SMS", unknown: "Unknown channel" };
 
   async function ensureConversation(inv) {
     if (inv.conversationId) return inv.conversationId;
     try {
       const conv = await apiPost("/api/conversations", {
-        user_id: userId(),
+        user_id: customerUserId(inv),
         title: inv.title || "Support conversation",
-        channel: "chat",
+        channel: inv.channel || "chat",
       });
       inv.conversationId = conv.conversation_id;
     } catch (_) {
       // API unreachable or endpoint missing — task run still works without conversation memory.
     }
     return inv.conversationId;
+  }
+
+  async function apiPut(path, body) {
+    const r = await fetch(apiBase() + path, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(body || {}),
+    });
+    if (!r.ok) throw new Error(await r.text().catch(() => String(r.status)));
+    return r.json();
+  }
+
+  async function loadProfile(inv) {
+    try {
+      inv.profile = await apiGet("/api/preferences/user/" + encodeURIComponent(customerUserId(inv)));
+    } catch (_) {
+      inv.profile = null;
+    }
+    // The helpdesk connector already knows the requester's identity — record it once so
+    // SupportMemory never has to ask for it again, even on this customer's first message.
+    if (inv.requesterName && (!inv.profile || inv.profile.source === "default")) {
+      try {
+        inv.profile = await apiPut("/api/preferences/user", {
+          user_id: customerUserId(inv),
+          display_name: inv.requesterName,
+          company: inv.requesterCompany || undefined,
+          contact_channel: inv.channel || undefined,
+        });
+      } catch (_) {}
+    }
+    if (activeInv() === inv) renderDashboard();
   }
 
   async function apiUpload(path, formData) {
@@ -122,6 +176,7 @@
       renderDashboard();
       pingApi();
       refreshKbDocs();
+      loadProfile(activeInv());
     }
     window.scrollTo(0, 0);
     history.replaceState(null, "", "#" + id);
@@ -145,6 +200,7 @@
         b.onclick = () => {
           activeId = inv.id;
           renderDashboard();
+          loadProfile(inv);
         };
         list.appendChild(b);
       });
@@ -197,31 +253,72 @@
       .join("");
   }
 
+  function evidenceChip(log, receipt) {
+    if (!log) return "";
+    const lines = String(log).split("\n").filter(Boolean);
+    const summary = lines.find((l) => l.startsWith("trace_id") || l.startsWith("task_id")) || `${lines.length} evidence lines`;
+    return `<details class="evidence">
+      <summary>🔍 View reasoning &amp; evidence — ${esc(summary)}</summary>
+      <div class="log">${formatLog(log)}</div>
+    </details>`;
+  }
+
+  function messageRow(who, text, opts = {}) {
+    const isAgent = opts.role === "agent";
+    const isNote = !!opts.note;
+    const name = isAgent ? "SupportMemory" : who;
+    return `<div class="msg-row ${isAgent ? "agent" : "customer"}${isNote ? " note" : ""}">
+        <div class="avatar" aria-hidden="true">${isAgent ? "🧠" : esc(initials(name))}</div>
+        <div class="msg">
+          <div class="who">
+            <strong>${esc(name)}</strong>
+            ${isNote ? `<span class="tag-note">Internal note</span>` : opts.tag ? `<span class="tag-inv">${esc(opts.tag)}</span>` : ""}
+            <span class="msg-time">${esc(fmtTime(opts.at))}</span>
+          </div>
+          <div class="bubble">${esc(text)}</div>
+          ${opts.log ? evidenceChip(opts.log) : ""}
+        </div>
+      </div>`;
+  }
+
+  function renderCustomerCard(inv) {
+    const el = document.getElementById("customer-card");
+    if (!el) return;
+    const profile = inv.profile;
+    const known = profile && profile.source && profile.source !== "default";
+    const name = (known && profile.display_name) || inv.requesterName || "Unknown customer";
+    const channel = (known && profile.contact_channel !== "unknown" && profile.contact_channel) || inv.channel || "unknown";
+    const tier = (known && profile.plan_tier !== "unknown" && profile.plan_tier) || null;
+    el.innerHTML = `
+      <div class="avatar cust-avatar" aria-hidden="true">${esc(initials(name))}</div>
+      <div class="cust-meta">
+        <div class="cust-name">${esc(name)}${inv.requesterCompany ? ` <span class="cust-company">· ${esc(inv.requesterCompany)}</span>` : ""}</div>
+        <div class="cust-badges">
+          <span class="chip chip-channel">${esc(CHANNEL_LABEL[channel] || channel)}</span>
+          ${tier ? `<span class="chip chip-tier">${esc(tier)} plan</span>` : ""}
+          ${inv.priority ? `<span class="chip chip-priority chip-priority-${esc(inv.priority)}">${esc(inv.priority)} priority</span>` : ""}
+          <span class="chip ${known ? "chip-recall-known" : "chip-recall-new"}" title="Recalled from stored preferences — not re-asked">${known ? "✓ Recalled from memory" : "First contact — no profile yet"}</span>
+        </div>
+      </div>`;
+  }
+
   function renderDashboard() {
     const inv = activeInv();
     document.getElementById("ticket-title").innerHTML = `Ticket #${esc(inv.ticket)} <span class="badge-ok">${esc(inv.status)}</span>`;
     document.getElementById("ticket-sub").textContent = `${inv.title} — ${inv.company}`;
+    renderCustomerCard(inv);
     renderSteps(inv.step);
 
-    let threadHtml = `
-        <div class="msg">
-          <div class="who">${esc(inv.customer)}</div>
-          <div class="bubble">${esc(inv.request)}</div>
-        </div>`;
+    let threadHtml = messageRow(inv.customer, inv.request, { role: "customer", at: inv.requestAt });
     if (inv.agent) {
-      threadHtml += `
-        <div class="msg agent">
-          <div class="who">SupportMemory <span class="tag-inv">${inv.live ? "LIVE" : "READY"}</span></div>
-          <div class="bubble">${esc(inv.agent)}<div class="log">${formatLog(inv.log)}</div></div>
-        </div>`;
+      threadHtml += messageRow("SupportMemory", inv.agent, { role: "agent", tag: inv.live ? "LIVE" : "READY", log: inv.log, at: Date.now() });
     }
     (inv.messages || []).forEach((m) => {
-      threadHtml += `<div class="msg ${m.role === "agent" ? "agent" : ""}">
-          <div class="who">${esc(m.who)}${m.tag ? ` <span class="tag-inv">${esc(m.tag)}</span>` : ""}</div>
-          <div class="bubble">${esc(m.text)}${m.log ? `<div class="log">${formatLog(m.log)}</div>` : ""}</div>
-        </div>`;
+      threadHtml += messageRow(m.who, m.text, { role: m.role, tag: m.tag, log: m.log, at: m.at, note: m.note });
     });
     document.getElementById("thread").innerHTML = threadHtml;
+    const threadEl = document.getElementById("thread");
+    threadEl.scrollTop = threadEl.scrollHeight;
 
     const top = (inv.kbHits && inv.kbHits[0]) || null;
     document.getElementById("mem-match").textContent = top
@@ -257,7 +354,10 @@
   }
 
   window.toggleInspector = function () {
-    document.getElementById("inspector")?.classList.toggle("open");
+    const panel = document.getElementById("inspector");
+    const open = panel?.classList.toggle("open");
+    const btn = document.getElementById("inspector-toggle");
+    if (btn) btn.textContent = open ? "Hide Inspector" : "Show Inspector";
   };
 
   function applyTaskResponse(inv, resp, opts = {}) {
@@ -305,7 +405,7 @@
         task_description: taskDescription,
         agent_id: AGENT_ID,
         dataset_type: "support_tickets",
-        user_id: userId(),
+        user_id: customerUserId(inv),
         conversation_id: inv.conversationId || undefined,
         ...extra,
       }),
@@ -327,21 +427,49 @@
     return taskResp;
   }
 
+  let composerMode = "reply";
+  window.setComposerMode = function (mode) {
+    composerMode = mode;
+    document.querySelectorAll(".composer-mode button").forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+    const input = document.getElementById("composer");
+    if (input) input.placeholder = mode === "note" ? "Add an internal note (not sent to the customer)…" : "Ask SupportMemory to take action...";
+  };
+
   window.sendComposer = async function () {
     const input = document.getElementById("composer");
     const text = (input?.value || "").trim();
     if (!text) return;
     const inv = activeInv();
     inv.messages = inv.messages || [];
-    inv.messages.push({ role: "user", who: "You", text });
     input.value = "";
+
+    if (composerMode === "note") {
+      inv.messages.push({ role: "system", who: "Operator", text, note: true, at: Date.now() });
+      renderDashboard();
+      try {
+        await ensureConversation(inv);
+        if (inv.conversationId) {
+          await apiPost(`/api/conversations/${encodeURIComponent(inv.conversationId)}/messages`, {
+            role: "system",
+            content: text,
+            metadata: { internal: true, author: "operator" },
+          });
+        }
+        toast("Internal note saved");
+      } catch (e) {
+        toast("Note not saved — API offline");
+      }
+      return;
+    }
+
+    inv.messages.push({ role: "user", who: "You", text, at: Date.now() });
     renderDashboard();
     setBusy(true);
     toast("Running task + KB retrieval…");
     try {
       const desc = `${inv.request}\n\nOperator follow-up: ${text}`;
       await runTaskFor(inv, desc);
-      inv.messages.push({ role: "agent", who: "SupportMemory", tag: "LIVE", text: inv.agent, log: inv.log });
+      inv.messages.push({ role: "agent", who: "SupportMemory", tag: "LIVE", text: inv.agent, log: inv.log, at: Date.now() });
       inv.agent = "";
       inv.log = "";
       document.getElementById("sys-state").textContent = "ACTIVE";
@@ -349,18 +477,42 @@
       renderDashboard();
       refreshKbDocs();
       setApiPill(true, "API live");
+      loadProfile(inv);
     } catch (e) {
       inv.messages.push({
         role: "agent",
         who: "SupportMemory",
         tag: "OFFLINE",
         text: "API unreachable. Start the stack (`docker compose up`) or set ?api=http://host:8000.",
+        at: Date.now(),
       });
       renderDashboard();
       toast("Composer failed — API offline");
       setApiPill(false, "API offline");
     } finally {
       setBusy(false);
+    }
+  };
+
+  window.quickAction = async function (action) {
+    const inv = activeInv();
+    inv.messages = inv.messages || [];
+    const label = action === "resolve" ? "Marked ticket resolved" : "Escalated ticket to senior support";
+    inv.status = action === "resolve" ? "Resolved" : "Escalated";
+    inv.messages.push({ role: "system", who: "Operator", text: label, note: true, at: Date.now() });
+    renderDashboard();
+    try {
+      await ensureConversation(inv);
+      if (inv.conversationId) {
+        await apiPost(`/api/conversations/${encodeURIComponent(inv.conversationId)}/messages`, {
+          role: "system",
+          content: label,
+          metadata: { internal: true, author: "operator", action },
+        });
+      }
+      toast(label);
+    } catch (_) {
+      toast(label + " (not synced — API offline)");
     }
   };
 
@@ -377,9 +529,13 @@
         company: "SupportMemory",
         ticket: (task.task_id || "DEMO").slice(-8).toUpperCase(),
         status: "Recovered",
-        customer: "Judge demo · failure → checkpoint → resume",
+        customer: "Judge demo",
+        requesterName: "Judge demo",
+        channel: "chat",
+        priority: "high",
         request:
           "Investigate support tickets, survive a simulated primary model failure, and produce an auditable recovery report.",
+        requestAt: Date.now(),
         agent: result.final_report || task.final_output || "",
         log: (result.demo_steps || []).join("\n") || "recovery demo complete",
         messages: [],
@@ -402,6 +558,7 @@
       } catch (_) {}
       investigations = [inv, ...investigations.filter((i) => i.id !== inv.id)];
       activeId = inv.id;
+      loadProfile(inv);
       document.getElementById("sys-state").textContent = "RECOVERED";
       setApiPill(true, "API live");
       renderDashboard();
@@ -415,28 +572,41 @@
     }
   };
 
+  const HELPDESK_PAGES = [null, "support_page_2", "support_page_3"];
+  let helpdeskPageIndex = 0;
+
   window.newInvestigation = async function () {
     showPage("dashboard");
     setBusy(true);
     toast("Pulling mock helpdesk ticket…");
     try {
+      const pageToken = HELPDESK_PAGES[helpdeskPageIndex % HELPDESK_PAGES.length];
+      helpdeskPageIndex += 1;
       const mock = await apiPost("/api/connectors/helpdesk/mock", {
         source_system: "zendesk_mock",
         dataset_type: "support_tickets",
+        page_token: pageToken,
       });
       const t = mock.ticket || {};
       const subject = t.subject || t.title || "Helpdesk ticket";
       const body =
         t.description || t.body || (mock.comments && mock.comments[0]?.body) || JSON.stringify(t).slice(0, 400);
       const ticketId = t.id || t.ticket_id || "HD-" + Date.now().toString().slice(-6);
+      const requester = t.requester || {};
       const inv = {
         id: "hd-" + ticketId,
         title: String(subject).slice(0, 48),
-        company: t.organization || t.organization_id || mock.source_system || "Helpdesk",
+        company: requester.company || t.organization || t.organization_id || mock.source_system || "Helpdesk",
         ticket: String(ticketId),
         status: "Investigating",
-        customer: (t.requester && (t.requester.name || t.requester.email)) || "Helpdesk requester",
+        customer: requester.name || requester.email || "Unknown customer",
+        requesterName: requester.name || null,
+        requesterEmail: requester.email || null,
+        requesterCompany: requester.company || null,
+        channel: mock.source_system === "freshdesk_mock" ? "chat" : "email",
+        priority: t.priority || "normal",
         request: body,
+        requestAt: Date.now(),
         agent: "",
         log: "",
         messages: [],
@@ -455,8 +625,10 @@
       investigations = [inv, ...investigations];
       activeId = inv.id;
       renderDashboard();
+      loadProfile(inv);
       toast("Ticket loaded — running investigation…");
       await runTaskFor(inv, `${subject}\n\n${body}`);
+      loadProfile(inv);
       document.getElementById("sys-state").textContent = "ACTIVE";
       setApiPill(true, "API live");
       renderDashboard();
@@ -490,7 +662,11 @@
           ticket: (tr.task_id || tr.id || "RUN").toString().slice(-8).toUpperCase(),
           status: tr.status || "live",
           customer: "Live run · " + (tr.agent_id || AGENT_ID),
+          requesterEmail: (tr.metadata && tr.metadata.user_id) || null,
+          conversationId: (tr.metadata && tr.metadata.conversation_id) || null,
+          channel: "chat",
           request: tr.task_description || "Restored from /api/demo/state",
+          requestAt: tr.created_at || Date.now(),
           agent: tr.final_output || "",
           log: `trace: ${tr.id || "—"}\ntask: ${tr.task_id || "—"}\nfailure: ${tr.failure_type || "none"}`,
           messages: [],

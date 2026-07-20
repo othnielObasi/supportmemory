@@ -119,6 +119,10 @@ function App() {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [voiceStatus, setVoiceStatus] = useState<"ready" | "listening" | "transcribing" | "thinking" | "speaking">("ready");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceReply, setVoiceReply] = useState("");
   const [confirmAction, setConfirmAction] = useState<
     "resolve" | "escalate" | null
   >(null);
@@ -128,6 +132,7 @@ function App() {
   const fileRef = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordingChunksRef = useRef<Blob[]>([]);
+  const recordingPurposeRef = useRef<"dictation" | "conversation" | "discard">("dictation");
 
   const active = items.find((item) => item.id === activeId);
   const visibleItems = useMemo(() => {
@@ -560,7 +565,7 @@ function App() {
     showNotice("Image attached for visual analysis");
   }
 
-  async function toggleRecording() {
+  async function toggleRecording(purpose: "dictation" | "conversation" = "dictation") {
     if (recording) {
       recorderRef.current?.stop();
       return;
@@ -573,6 +578,7 @@ function App() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
+      recordingPurposeRef.current = purpose;
       recordingChunksRef.current = [];
       recorder.ondataavailable = (event) => {
         if (event.data.size) recordingChunksRef.current.push(event.data);
@@ -580,15 +586,14 @@ function App() {
       recorder.onstop = () => {
         stream.getTracks().forEach((track) => track.stop());
         setRecording(false);
-        void transcribeRecording(
-          new Blob(recordingChunksRef.current, {
-            type: recorder.mimeType || "audio/webm",
-          }),
-        );
+        const blob = new Blob(recordingChunksRef.current, { type: recorder.mimeType || "audio/webm" });
+        if (recordingPurposeRef.current === "conversation") void runVoiceTurn(blob);
+        else if (recordingPurposeRef.current === "dictation") void transcribeRecording(blob);
       };
       recorderRef.current = recorder;
       recorder.start();
       setRecording(true);
+      if (purpose === "conversation") setVoiceStatus("listening");
     } catch {
       setError("Microphone access was not granted.");
     }
@@ -629,6 +634,40 @@ function App() {
     } finally {
       setTranscribing(false);
     }
+  }
+
+  async function runVoiceTurn(blob: Blob) {
+    if (!active) return;
+    if (blob.size > 12 * 1024 * 1024) { setVoiceStatus("ready"); setError("Voice recordings must be 12 MB or smaller."); return; }
+    const target = active;
+    setVoiceStatus("transcribing"); setVoiceTranscript(""); setVoiceReply(""); setError(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(reader.error); reader.readAsDataURL(blob); });
+      const transcription = await api.transcribeVoice({ audio_base64: dataUrl.split(",")[1], mime_type: blob.type || "audio/webm", language: null, user_id: target.userId, auto_learn_language: true, ingest_to_kb: false });
+      const text = transcription.transcript?.trim();
+      if (!text) throw new Error(transcription.message || "No speech was detected.");
+      setVoiceTranscript(text); setVoiceStatus("thinking");
+      const conversationId = await ensureConversation(target);
+      const optimistic: Message = { message_id: uid("voice"), role: "user", content: text, created_at: new Date().toISOString(), pending: true, metadata: { input_mode: "voice" } };
+      updateItem(target.id, (current) => ({ ...current, messages: [...current.messages, optimistic], updatedAt: Date.now() }));
+      const [response, kb, graph] = await Promise.all([
+        api.runTask({ task_description: text, agent_id: "ticket-investigation-agent", dataset_type: "support_tickets", user_id: target.userId, conversation_id: conversationId, persist_conversation: true, organisation_id: tenant.organisationId, workspace_id: tenant.workspaceId, project_id: tenant.projectId, idempotency_key: uid("voice") }),
+        api.searchKb({ query: text, agent_id: "ticket-investigation-agent", top_k: 5, organisation_id: tenant.organisationId, workspace_id: tenant.workspaceId }).catch(() => ({ hits: [], context_prefix: "" })),
+        api.traverseGraph({ query: text, organisation_id: tenant.organisationId, workspace_id: tenant.workspaceId, max_depth: 2, max_paths: 8 }).catch(() => []),
+      ]);
+      applyResponse(target.id, response, kb.hits, graph, optimistic.message_id);
+      setVoiceReply(response.final_output); setVoiceStatus("speaking");
+      const speech = await api.synthesizeVoice({ text: response.final_output.slice(0, 1200), language_type: "Auto", user_id: target.userId, auto_learn_language: true, run_id: response.task_id, checkpoint_id: response.checkpoint_id });
+      if (!speech.audio_base64) throw new Error(speech.message || "Speech audio was not returned.");
+      const audio = new Audio(`data:${speech.mime_type || "audio/wav"};base64,${speech.audio_base64}`);
+      audio.onended = () => setVoiceStatus("ready"); audio.onerror = () => { setVoiceStatus("ready"); setError("The generated audio could not be played."); };
+      await audio.play();
+    } catch (cause) { setVoiceStatus("ready"); setError(cause instanceof Error ? cause.message : "Voice conversation failed"); }
+  }
+
+  function closeVoiceMode() {
+    if (recording && recordingPurposeRef.current === "conversation") { recordingPurposeRef.current = "discard"; recorderRef.current?.stop(); }
+    setVoiceOpen(false); setVoiceStatus("ready");
   }
 
   async function speak(message: Message) {
@@ -917,7 +956,8 @@ function App() {
                       }
                       rows={2}
                     />
-                    <button type="button" className="voice-button" onClick={() => void toggleRecording()} aria-label={recording ? "Stop recording" : "Record voice message"} title={recording ? "Stop recording" : "Record voice message"}><span className="voice-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></button>
+                    <button type="button" className="mic-button" onClick={() => void toggleRecording()} aria-label={recording ? "Stop dictation" : "Dictate with microphone"} title={recording ? "Stop dictation" : "Dictate with microphone"}><span className="mic-icon" aria-hidden="true"><i></i></span></button>
+                    <button type="button" className="voice-button" onClick={() => { setVoiceOpen(true); setVoiceTranscript(""); setVoiceReply(""); }} aria-label="Open voice conversation" title="Open voice conversation"><span className="voice-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></button>
                     <button
                       type={busy ? "button" : "submit"}
                       className={busy ? "stop-button" : "send-button"}
@@ -988,6 +1028,20 @@ function App() {
           data={receipt}
           close={() => setReceipt(null)}
         />
+      )}
+      {voiceOpen && (
+        <div className="voice-mode-backdrop">
+          <section className="voice-mode" role="dialog" aria-modal="true" aria-labelledby="voice-mode-title">
+            <button className="voice-close" onClick={closeVoiceMode} aria-label="Close voice mode">×</button>
+            <span className={`voice-orb ${voiceStatus}`} aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>
+            <h2 id="voice-mode-title">Voice conversation</h2>
+            <p className="voice-state">{voiceStatus === "ready" ? "Ready when you are" : voiceStatus === "listening" ? "Listening… tap to stop" : voiceStatus === "transcribing" ? "Understanding your voice…" : voiceStatus === "thinking" ? "Investigating…" : "Speaking…"}</p>
+            {voiceTranscript && <div className="voice-turn"><span>You said</span><p>{voiceTranscript}</p></div>}
+            {voiceReply && <div className="voice-turn response"><span>SupportMemory</span><p>{voiceReply}</p></div>}
+            <button className={`voice-action ${recording ? "active" : ""}`} disabled={voiceStatus !== "ready" && voiceStatus !== "listening"} onClick={() => void toggleRecording("conversation")}><span className="mic-icon" aria-hidden="true"><i></i></span>{recording ? "Stop" : voiceReply ? "Speak again" : "Start speaking"}</button>
+            <small>Turn-based voice · language detected automatically</small>
+          </section>
+        </div>
       )}
       {notice && (
         <div className="toast" role="status" aria-live="polite">

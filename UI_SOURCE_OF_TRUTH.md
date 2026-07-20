@@ -18,14 +18,14 @@ Removed from the file:
 
 ## Implemented UI
 
-Canonical file:
+Production console source:
 
-- `HACKATHON_UI.html`
+- `apps/console/src/main.tsx` — application shell and interaction model
+- `apps/console/src/api.ts` — typed, timeout-aware API client
+- `apps/console/src/styles.css` — responsive production design system
 
-Synced copies (keep in sync when editing):
-
-- `apps/console/public/hackathon-ui.html` (hero image path: `/assets/hero-supportmemory.jpg`)
-- `docs/assets/supportmemory-ui.html`
+`HACKATHON_UI.html` and its synced copies are retained only as archived marketing/demo
+artifacts. The production console no longer redirects to or executes them.
 
 Hero asset:
 
@@ -40,17 +40,17 @@ Hero asset:
 - Type: Instrument Serif (display) · Geist · Geist Mono
 - Pages (client-side, no reload): Landing · Capabilities · Architecture · **Dashboard**
 
-### Dashboard (priority surface)
+### Production workspace (priority surface)
 
-Three columns + status bar matching Figma:
+Three responsive regions:
 
-1. Investigations sidebar (`+ New investigation`, search, ticket list)
-2. Ticket workspace (step rail, thread, composer)
-3. Live Inspector (memory match, checkpoint, Qwen-Max metrics)
+1. Live investigation inbox with explicit connected/offline/empty states
+2. Durable conversation workspace with reply/note modes and governed actions
+3. Evidence drawer separating memory, graph relationships, execution state and receipts
 
 ### Live data wiring
 
-Shared client: `assets/supportmemory-wire.js` (console: `/supportmemory-wire.js`).
+Typed client: `apps/console/src/api.ts`.
 
 | UI control | API |
 |---|---|

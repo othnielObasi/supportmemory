@@ -171,6 +171,10 @@ class ExecutionTrace(BaseModel):
     final_output: str
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: datetime = Field(default_factory=utc_now)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
 
     class Config:
         populate_by_name = True
@@ -310,6 +314,8 @@ class IdempotencyRecord(BaseModel):
     result_hash: Optional[str] = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
     class Config:
         populate_by_name = True
@@ -326,6 +332,10 @@ class ReflectionInsight(BaseModel):
     confidence: float = Field(ge=0, le=1)
     status: LessonStatus = LessonStatus.pending_curation
     derivation: str = "llm"
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
     created_at: datetime = Field(default_factory=utc_now)
 
     class Config:
@@ -352,6 +362,12 @@ class PlaybookRule(BaseModel):
     signature: str
     policy_flags: List[str] = Field(default_factory=list)
     embedding: List[float] = Field(default_factory=list)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    agent_id: Optional[str] = None
+    expires_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 
@@ -364,6 +380,7 @@ class RetrievedRule(BaseModel):
     score: float
     rule_text: str
     category: str = "tool_use"
+    evidence_ids: List[str] = Field(default_factory=list)
 
 
 class RetrievalEvent(BaseModel):
@@ -373,6 +390,14 @@ class RetrievalEvent(BaseModel):
     query: str
     retrieved_rules: List[RetrievedRule]
     context_prefix: str
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    trace_id: Optional[str] = None
+    kb_hits: List[Dict[str, Any]] = Field(default_factory=list)
+    graph_paths: List[Dict[str, Any]] = Field(default_factory=list)
+    embedding_provider: str = "hash"
     created_at: datetime = Field(default_factory=utc_now)
 
     class Config:
@@ -424,6 +449,9 @@ class TaskRunResponse(BaseModel):
     model_trace: Dict[str, Any] = Field(default_factory=dict)
     investigation_report: Optional[str] = None
     tool_investigation_summary: Optional[str] = None
+    reflection_id: Optional[str] = None
+    learned_rule_id: Optional[str] = None
+    context_receipt_id: Optional[str] = None
 
 
 class CheckpointRestoreResponse(BaseModel):
@@ -488,6 +516,11 @@ class RetrieveLessonsRequest(BaseModel):
     top_k: int = Field(default=3, ge=1, le=10)
     include_kb: bool = True
     kb_top_k: int = Field(default=3, ge=0, le=10)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    include_graph: bool = True
 
 
 class KbHit(BaseModel):
@@ -498,12 +531,98 @@ class KbHit(BaseModel):
     text: str
     source_type: str = "policy"
     source_system: str = "kb"
+    evidence_ids: List[str] = Field(default_factory=list)
 
 
 class RetrieveLessonsResponse(BaseModel):
     retrieved_rules: List[RetrievedRule]
     context_prefix: str
     kb_hits: List[KbHit] = Field(default_factory=list)
+
+
+class GraphNode(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("node"), alias="_id")
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    node_type: str
+    canonical_key: str
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    source_type: str = "manual"
+    source_id: str = "manual"
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    valid_from: datetime = Field(default_factory=utc_now)
+    valid_until: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    class Config:
+        populate_by_name = True
+
+
+class GraphEdge(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("edge"), alias="_id")
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    source_node_id: str
+    target_node_id: str
+    relation: str
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    evidence_ids: List[str] = Field(default_factory=list)
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    valid_from: datetime = Field(default_factory=utc_now)
+    valid_until: Optional[datetime] = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    class Config:
+        populate_by_name = True
+
+
+class GraphPath(BaseModel):
+    node_ids: List[str]
+    relations: List[str]
+    evidence_ids: List[str] = Field(default_factory=list)
+    score: float = 0.0
+    explanation: str = ""
+
+
+class GraphNodeRequest(BaseModel):
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    node_type: str
+    canonical_key: str
+    properties: Dict[str, Any] = Field(default_factory=dict)
+    source_type: str = "manual"
+    source_id: str = "manual"
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    valid_until: Optional[datetime] = None
+
+
+class GraphEdgeRequest(BaseModel):
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    source_node_id: str
+    target_node_id: str
+    relation: str
+    evidence_ids: List[str] = Field(default_factory=list)
+    confidence: float = Field(default=1.0, ge=0, le=1)
+    valid_until: Optional[datetime] = None
+
+
+class GraphTraverseRequest(BaseModel):
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    seed_node_ids: List[str] = Field(default_factory=list)
+    query: str = ""
+    relations: List[str] = Field(default_factory=list)
+    max_depth: int = Field(default=2, ge=1, le=4)
+    max_paths: int = Field(default=12, ge=1, le=50)
 
 
 class KbIngestRequest(BaseModel):
@@ -515,6 +634,11 @@ class KbIngestRequest(BaseModel):
     agent_id: str = "ticket-investigation-agent"
     chunk_chars: int = Field(default=1000, ge=200, le=4000)
     chunk_overlap: int = Field(default=150, ge=0, le=800)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    expires_at: Optional[datetime] = None
 
 
 class KbChunkSummary(BaseModel):
@@ -531,6 +655,8 @@ class KbIngestResponse(BaseModel):
     chunks: List[KbChunkSummary]
     source_type: str
     source_system: str
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
 
 class KbDocumentSummary(BaseModel):
@@ -548,6 +674,8 @@ class KbSearchRequest(BaseModel):
     query: str = Field(..., min_length=3, max_length=4000)
     agent_id: str = "ticket-investigation-agent"
     top_k: int = Field(default=5, ge=1, le=20)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
 
 class KbSearchResponse(BaseModel):
@@ -582,6 +710,10 @@ class MultimodalAnalyzeRequest(BaseModel):
     agent_id: str = "ticket-investigation-agent"
     ingest_to_kb: bool = False
     title: Optional[str] = None
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
 
 
 class MultimodalAnalyzeResponse(BaseModel):
@@ -693,6 +825,8 @@ class UserPreferenceRequest(BaseModel):
     timezone: Optional[str] = Field(default=None, max_length=64)
     extras: Dict[str, Any] = Field(default_factory=dict)
     merge_extras: bool = True
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
 
 class UserPreferenceResponse(BaseModel):
@@ -709,6 +843,8 @@ class UserPreferenceResponse(BaseModel):
     source: str = "default"
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
 
 class ConversationCreateRequest(BaseModel):
@@ -716,6 +852,8 @@ class ConversationCreateRequest(BaseModel):
     title: Optional[str] = Field(default=None, max_length=200)
     channel: Optional[str] = Field(default="chat", max_length=64)
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
 
 class ConversationMessageRequest(BaseModel):
@@ -743,6 +881,8 @@ class ConversationResponse(BaseModel):
     metadata: Dict[str, Any] = Field(default_factory=dict)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
 
 class ConversationSummary(BaseModel):
@@ -753,6 +893,8 @@ class ConversationSummary(BaseModel):
     is_default: bool = False
     message_count: int = 0
     updated_at: Optional[str] = None
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
 
 
 class PartnerStatus(BaseModel):
@@ -827,6 +969,12 @@ class ApproveMemoryRequest(BaseModel):
     risk_level: str = "low"
     approved_by: str = "developer"
     evidence: Dict[str, Any] = Field(default_factory=dict)
+    organisation_id: str = "org_default"
+    workspace_id: str = "wrk_default"
+    project_id: str = "prj_default"
+    environment_id: str = "dev"
+    agent_id: Optional[str] = None
+    expires_at: Optional[datetime] = None
 
 
 class ApproveMemoryResponse(BaseModel):

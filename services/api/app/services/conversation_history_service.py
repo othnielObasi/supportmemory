@@ -26,6 +26,8 @@ class ConversationHistoryService:
         title: Optional[str] = None,
         channel: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
+        organisation_id: str = "org_default",
+        workspace_id: str = "wrk_default",
     ) -> dict[str, Any]:
         now = utc_now().isoformat()
         conversation_id = new_id("conv")
@@ -44,38 +46,45 @@ class ConversationHistoryService:
             "is_default": is_default,
             "created_at": now,
             "updated_at": now,
+            "organisation_id": organisation_id,
+            "workspace_id": workspace_id,
         }
         await self.store.upsert_one(self.COLLECTION, {"conversation_id": conversation_id}, payload)
-        return await self.get(conversation_id)
+        return await self.get(conversation_id, organisation_id, workspace_id)
 
-    async def get(self, conversation_id: str) -> dict[str, Any]:
+    async def get(self, conversation_id: str, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> dict[str, Any]:
         doc = await self.store.find_one_by(self.COLLECTION, {"conversation_id": conversation_id})
         if not doc:
             raise KeyError(f"conversation not found: {conversation_id}")
+        if doc.get("organisation_id", "org_default") != organisation_id or doc.get("workspace_id", "wrk_default") != workspace_id:
+            raise KeyError(f"conversation not found: {conversation_id}")
         return self._public(doc)
 
-    async def list_for_user(self, user_id: str, *, limit: int = 20) -> list[dict[str, Any]]:
+    async def list_for_user(self, user_id: str, *, limit: int = 20, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> list[dict[str, Any]]:
         docs = await self.store.find_many(
             self.COLLECTION,
             query={"user_id": user_id},
             limit=limit,
             sort=[("updated_at", DESCENDING)],
         )
-        return [self._public(doc, include_messages=False) for doc in docs]
+        return [self._public(doc, include_messages=False) for doc in docs if doc.get("organisation_id", "org_default") == organisation_id and doc.get("workspace_id", "wrk_default") == workspace_id]
 
-    async def get_or_create_default(self, user_id: str) -> dict[str, Any]:
+    async def get_or_create_default(self, user_id: str, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> dict[str, Any]:
         docs = await self.store.find_many(
             self.COLLECTION,
             query={"user_id": user_id, "is_default": "true"},
-            limit=1,
+            limit=50,
             sort=[("updated_at", DESCENDING)],
         )
+        docs = [doc for doc in docs if doc.get("organisation_id", "org_default") == organisation_id and doc.get("workspace_id", "wrk_default") == workspace_id]
         if docs:
             return self._public(docs[0])
         return await self.create(
             user_id,
             title="Default support thread",
             metadata={"is_default": True},
+            organisation_id=organisation_id,
+            workspace_id=workspace_id,
         )
 
     async def append_message(
@@ -85,9 +94,13 @@ class ConversationHistoryService:
         role: str,
         content: str,
         metadata: Optional[dict[str, Any]] = None,
+        organisation_id: str = "org_default",
+        workspace_id: str = "wrk_default",
     ) -> dict[str, Any]:
         doc = await self.store.find_one_by(self.COLLECTION, {"conversation_id": conversation_id})
         if not doc:
+            raise KeyError(f"conversation not found: {conversation_id}")
+        if doc.get("organisation_id", "org_default") != organisation_id or doc.get("workspace_id", "wrk_default") != workspace_id:
             raise KeyError(f"conversation not found: {conversation_id}")
         role_norm = (role or "user").strip().lower()
         if role_norm not in {"user", "assistant", "system", "tool"}:
@@ -122,20 +135,24 @@ class ConversationHistoryService:
         assistant_content: str,
         conversation_id: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
+        organisation_id: str = "org_default",
+        workspace_id: str = "wrk_default",
     ) -> dict[str, Any]:
         """Append a user+assistant pair, creating/using the default thread when needed."""
         if conversation_id:
-            conv = await self.get(conversation_id)
+            conv = await self.get(conversation_id, organisation_id, workspace_id)
             if conv["user_id"] != user_id:
                 raise PermissionError("conversation does not belong to user")
         else:
-            conv = await self.get_or_create_default(user_id)
+            conv = await self.get_or_create_default(user_id, organisation_id, workspace_id)
             conversation_id = conv["conversation_id"]
         await self.append_message(
             conversation_id,
             role="user",
             content=user_content,
             metadata=metadata,
+            organisation_id=organisation_id,
+            workspace_id=workspace_id,
         )
         if assistant_content:
             await self.append_message(
@@ -143,8 +160,13 @@ class ConversationHistoryService:
                 role="assistant",
                 content=assistant_content,
                 metadata=metadata,
+                organisation_id=organisation_id,
+                workspace_id=workspace_id,
             )
-        return await self.get(conversation_id)
+        return await self.get(conversation_id, organisation_id, workspace_id)
+
+    async def delete_for_user(self, user_id: str, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> int:
+        return await self.store.delete_many(self.COLLECTION, {"user_id": user_id, "organisation_id": organisation_id, "workspace_id": workspace_id})
 
     def recent_context_prefix(
         self,
@@ -182,4 +204,6 @@ class ConversationHistoryService:
             "metadata": doc.get("metadata") or {},
             "created_at": doc.get("created_at"),
             "updated_at": doc.get("updated_at"),
+            "organisation_id": doc.get("organisation_id", "org_default"),
+            "workspace_id": doc.get("workspace_id", "wrk_default"),
         }

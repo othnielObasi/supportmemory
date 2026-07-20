@@ -183,6 +183,9 @@ Deploy assets: `infra/alibaba/` (ECS + OSS). Legacy Vultr assets remain under `i
 - **Retrieve** top‑K rules + KB chunks into context before planning  
 - **User preferences** — name, contact channel, plan tier, extras (`PUT /api/preferences/user`)  
 - **Conversation history** — per-user threads persisted and injected into `POST /api/tasks/run` when `user_id` is set  
+- **Knowledge graph** — tenant-scoped customer, account, ticket, incident, policy, trace, tool, and lesson relationships retrieved as evidence paths
+- **Automatic learning** — ordinary runs reflect and curate sufficiently confident lessons (`MEMORY_AUTO_LEARN=true`)
+- **Governed forgetting** — expiry-aware retrieval, dry-run pruning, and per-user memory deletion
 
 ### Knowledge & connectors
 - **Real text/PDF ingest** → chunk → embed → Postgres → search  
@@ -230,6 +233,11 @@ QWEN_EMBEDDING_MODEL=text-embedding-v3
 | POST | `/api/traces/{trace_id}/reflect` | Derive a lesson from a trace |
 | POST | `/api/reflections/{id}/curate` | Promote a safe lesson into the playbook |
 | POST | `/api/lessons/retrieve` | Retrieve lessons (+ KB) for a task |
+| POST | `/api/graph/nodes` | Upsert a tenant-scoped graph entity |
+| POST | `/api/graph/edges` | Create an evidence-backed graph relationship |
+| POST | `/api/graph/traverse` | Retrieve bounded multi-hop evidence paths |
+| POST | `/api/memory/expired/prune` | Preview or prune expired memory |
+| DELETE | `/api/memory/users/{user_id}` | Delete a user's profile, conversations, preferences, and graph identity |
 | GET | `/api/traces/{trace_id}/receipt` | Signed execution receipt |
 | POST | `/api/kb/ingest` | Ingest policy/SOP text |
 | POST | `/api/kb/ingest/pdf` | Ingest a PDF |
@@ -258,7 +266,7 @@ Full interactive docs: http://localhost:8000/docs
 
 ```text
 supportmemory/
-├── apps/console/                 # Main UI (:3000) → hackathon-ui.html
+├── apps/console/                 # Production React support workspace (:3000)
 ├── apps/ticket-agent-demo/       # Reference support chat UI
 ├── services/api/                 # FastAPI runtime
 ├── services/mock-tools/          # Keyless MCP-style ticket/policy tools

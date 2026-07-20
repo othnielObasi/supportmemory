@@ -79,6 +79,10 @@ class MultimodalService:
         task_description: str,
         agent_id: str,
         ingest_to_kb: bool = False,
+        organisation_id: str = "org_default",
+        workspace_id: str = "wrk_default",
+        project_id: str = "prj_default",
+        environment_id: str = "dev",
     ) -> tuple[str, List[dict]]:
         if not attachments:
             return "", []
@@ -95,6 +99,10 @@ class MultimodalService:
                     agent_id=agent_id,
                     ingest_to_kb=ingest_to_kb,
                     title=attachment.filename or attachment.caption or "Support screenshot",
+                    organisation_id=organisation_id,
+                    workspace_id=workspace_id,
+                    project_id=project_id,
+                    environment_id=environment_id,
                 )
             )
             sections.append(result.context_prefix)
@@ -210,6 +218,10 @@ class MultimodalService:
                 source_system="qwen_vl" if not summary.startswith("Vision fallback") else "vision_fallback",
                 tags=["multimodal", payload.attachment.type, "supportmemory"],
                 agent_id=payload.agent_id,
+                organisation_id=payload.organisation_id,
+                workspace_id=payload.workspace_id,
+                project_id=payload.project_id,
+                environment_id=payload.environment_id,
             )
         )
         return ingested.document_id

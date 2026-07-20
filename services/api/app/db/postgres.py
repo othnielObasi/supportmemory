@@ -38,6 +38,9 @@ PRODUCTION_COLLECTIONS = [
     'user_language_preferences',
     'user_preferences',
     'user_conversations',
+    'knowledge_graph_nodes',
+    'knowledge_graph_edges',
+    'context_receipts',
     'idempotency_keys',
     'organisations',
     'workspaces',
@@ -122,10 +125,15 @@ class PostgresStore:
             "CREATE INDEX IF NOT EXISTS idx_tm_records_user_id ON trace_memory_records (collection, (data->>'user_id'))",
             "CREATE INDEX IF NOT EXISTS idx_tm_records_conversation_id ON trace_memory_records (collection, (data->>'conversation_id'))",
             "CREATE INDEX IF NOT EXISTS idx_tm_records_agent ON trace_memory_records (collection, (data->>'agent_id'))",
+            "CREATE INDEX IF NOT EXISTS idx_tm_graph_node_key ON trace_memory_records (collection, (data->>'workspace_id'), (data->>'node_type'), (data->>'canonical_key')) WHERE collection = 'knowledge_graph_nodes'",
+            "CREATE INDEX IF NOT EXISTS idx_tm_graph_edge_source ON trace_memory_records (collection, (data->>'workspace_id'), (data->>'source_node_id')) WHERE collection = 'knowledge_graph_edges'",
+            "CREATE INDEX IF NOT EXISTS idx_tm_graph_edge_target ON trace_memory_records (collection, (data->>'workspace_id'), (data->>'target_node_id')) WHERE collection = 'knowledge_graph_edges'",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_graph_node_key ON trace_memory_records ((data->>'organisation_id'), (data->>'workspace_id'), (data->>'node_type'), (data->>'canonical_key')) WHERE collection = 'knowledge_graph_nodes'",
             "CREATE INDEX IF NOT EXISTS idx_tm_records_job_status ON trace_memory_records (collection, (data->>'status')) WHERE collection = 'background_jobs'",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_api_key_hash ON trace_memory_records ((data->>'key_hash')) WHERE collection = 'api_keys' AND data ? 'key_hash'",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_action_idempotency ON trace_memory_records ((data->>'workspace_id'), (data->>'idempotency_key')) WHERE collection = 'action_executions' AND data ? 'idempotency_key'",
-            "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_idempotency_keys ON trace_memory_records ((data->>'key')) WHERE collection = 'idempotency_keys' AND data ? 'key'",
+            "DROP INDEX IF EXISTS uq_tm_idempotency_keys",
+            "CREATE UNIQUE INDEX uq_tm_idempotency_keys ON trace_memory_records ((data->>'workspace_id'), (data->>'key')) WHERE collection = 'idempotency_keys' AND data ? 'key'",
         ]
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -224,6 +232,12 @@ class PostgresStore:
         where, params = self._build_where(collection, query or {})
         async with self._acquire() as conn:
             return int(await conn.fetchval(f'SELECT count(*) FROM trace_memory_records WHERE {where}', *params))
+
+    async def delete_many(self, collection: str, query: Dict[str, Any] | None = None) -> int:
+        where, params = self._build_where(collection, query or {})
+        async with self._acquire() as conn:
+            result = await conn.execute(f'DELETE FROM trace_memory_records WHERE {where}', *params)
+        return int(str(result).split()[-1])
 
     async def latest_checkpoint(self, task_id: str) -> Optional[Dict[str, Any]]:
         return await self.find_one_by('task_checkpoints', {'task_id': task_id}, sort=[('created_at', DESCENDING)])

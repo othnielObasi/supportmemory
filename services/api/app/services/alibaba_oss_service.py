@@ -49,15 +49,18 @@ class AlibabaOSSService:
     @property
     def enabled(self) -> bool:
         return bool(
-            oss2 is not None
-            and self.settings.alibaba_access_key_id
+            self.settings.alibaba_access_key_id
             and self.settings.alibaba_access_key_secret
             and self.settings.alibaba_oss_bucket
         )
 
+    @property
+    def operational(self) -> bool:
+        return self.enabled and oss2 is not None and self._bucket is not None
+
     def archive_receipt(self, task_id: str, receipt_hash: str, receipt: dict[str, Any]) -> str | None:
         """Uploads a finalised receipt to OSS. Returns the object URL, or None if not configured."""
-        if not self.enabled or self._bucket is None:
+        if not self.operational:
             return None
         key = f"receipts/{task_id}/{receipt_hash}.json"
         body = json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
@@ -66,7 +69,7 @@ class AlibabaOSSService:
 
     def fetch_receipt(self, task_id: str, receipt_hash: str) -> dict[str, Any] | None:
         """Reads a previously archived receipt back from OSS, for offline/third-party verification."""
-        if not self.enabled or self._bucket is None:
+        if not self.operational:
             return None
         key = f"receipts/{task_id}/{receipt_hash}.json"
         result = self._bucket.get_object(key)

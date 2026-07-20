@@ -34,7 +34,7 @@ class UserPreferenceService:
         self.store = store
         self.language_prefs = language_prefs
 
-    def _defaults(self, user_id: str) -> dict[str, Any]:
+    def _defaults(self, user_id: str, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> dict[str, Any]:
         return {
             "user_id": user_id,
             "display_name": None,
@@ -49,11 +49,15 @@ class UserPreferenceService:
             "source": "default",
             "created_at": None,
             "updated_at": None,
+            "organisation_id": organisation_id,
+            "workspace_id": workspace_id,
         }
 
-    async def get(self, user_id: str) -> dict[str, Any]:
-        doc = await self.store.find_one_by(self.COLLECTION, {"user_id": user_id})
-        base = self._defaults(user_id)
+    async def get(self, user_id: str, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> dict[str, Any]:
+        doc = await self.store.find_one_by(self.COLLECTION, {"user_id": user_id, "organisation_id": organisation_id, "workspace_id": workspace_id})
+        if not doc and organisation_id == "org_default" and workspace_id == "wrk_default":
+            doc = await self.store.find_one_by(self.COLLECTION, {"user_id": user_id})
+        base = self._defaults(user_id, organisation_id, workspace_id)
         if not doc:
             return base
         extras = doc.get("extras") if isinstance(doc.get("extras"), dict) else {}
@@ -88,8 +92,11 @@ class UserPreferenceService:
         extras: Optional[dict[str, Any]] = None,
         source: str = "explicit",
         merge_extras: bool = True,
+        organisation_id: str = "org_default",
+        workspace_id: str = "wrk_default",
     ) -> dict[str, Any]:
-        existing = await self.store.find_one_by(self.COLLECTION, {"user_id": user_id})
+        query = {"user_id": user_id, "organisation_id": organisation_id, "workspace_id": workspace_id}
+        existing = await self.store.find_one_by(self.COLLECTION, query)
         now = utc_now().isoformat()
         prev_extras = (existing or {}).get("extras") if isinstance((existing or {}).get("extras"), dict) else {}
         next_extras = {**prev_extras, **(extras or {})} if merge_extras else (extras or {})
@@ -119,13 +126,18 @@ class UserPreferenceService:
             "source": source,
             "created_at": (existing or {}).get("created_at") or now,
             "updated_at": now,
+            "organisation_id": organisation_id,
+            "workspace_id": workspace_id,
         }
-        await self.store.upsert_one(self.COLLECTION, {"user_id": user_id}, payload)
+        await self.store.upsert_one(self.COLLECTION, query, payload)
 
         if preferred_language and self.language_prefs is not None:
             await self.language_prefs.set(user_id, preferred_language, source=source)
 
-        return await self.get(user_id)
+        return await self.get(user_id, organisation_id, workspace_id)
+
+    async def delete(self, user_id: str, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> int:
+        return await self.store.delete_many(self.COLLECTION, {"user_id": user_id, "organisation_id": organisation_id, "workspace_id": workspace_id})
 
     def context_prefix(self, profile: dict[str, Any]) -> str:
         """Compact profile block for agent context_prefix injection."""

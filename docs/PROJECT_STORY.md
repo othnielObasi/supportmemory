@@ -8,13 +8,15 @@ Hackathon submission narrative for **Track 1: MemoryAgent** (Qwen Cloud).
 
 ## Inspiration
 
-Customer support is one of the hardest places to “just add an LLM.” Agents re-ask questions customers already answered, re-investigate issues that were already diagnosed, and lose everything if a long tool-using run crashes mid-flight. That is not only a model problem — it is a **memory** problem:
+Customer support is one of the hardest places to “just add an LLM.” Agents re-ask questions customers already answered, re-investigate issues that were already diagnosed, and lose everything if a long tool-using run crashes mid-flight. That is not only a model problem — it is a **memory** problem.
 
-\[
+In short:
+
+$$
 \text{good support} \approx \text{recall} + \text{safe action} + \text{recoverability} + \text{proof}
-\]
+$$
 
-We built **SupportMemory** for **Track 1: MemoryAgent** on **Qwen Cloud**: a support agent that remembers what matters, forgets what is stale, resumes after failure, and proves what it did.
+We built **SupportMemory** for **Track 1: MemoryAgent** on **Qwen Cloud**: a support agent that remembers what matters, forgets what is stale, resumes after failure, and proves what it did. The goal is \(\text{memory that recovers}\) — not another chat wrapper.
 
 ## What it does
 

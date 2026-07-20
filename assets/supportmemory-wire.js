@@ -58,6 +58,31 @@
     return r.json();
   }
 
+  function userId() {
+    const key = "supportmemory_user_id";
+    let id = localStorage.getItem(key);
+    if (!id) {
+      id = "user_" + Math.random().toString(36).slice(2, 10);
+      localStorage.setItem(key, id);
+    }
+    return id;
+  }
+
+  async function ensureConversation(inv) {
+    if (inv.conversationId) return inv.conversationId;
+    try {
+      const conv = await apiPost("/api/conversations", {
+        user_id: userId(),
+        title: inv.title || "Support conversation",
+        channel: "chat",
+      });
+      inv.conversationId = conv.conversation_id;
+    } catch (_) {
+      // API unreachable or endpoint missing — task run still works without conversation memory.
+    }
+    return inv.conversationId;
+  }
+
   async function apiUpload(path, formData) {
     const r = await fetch(apiBase() + path, { method: "POST", body: formData });
     if (!r.ok) throw new Error(await r.text().catch(() => String(r.status)));
@@ -274,11 +299,14 @@
 
   async function runTaskFor(inv, taskDescription, extra = {}) {
     const started = performance.now();
+    await ensureConversation(inv);
     const [taskResp, kbResp] = await Promise.all([
       apiPost("/api/tasks/run", {
         task_description: taskDescription,
         agent_id: AGENT_ID,
         dataset_type: "support_tickets",
+        user_id: userId(),
+        conversation_id: inv.conversationId || undefined,
         ...extra,
       }),
       apiPost("/api/kb/search", {

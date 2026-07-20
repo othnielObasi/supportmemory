@@ -648,7 +648,10 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
     )
 
     trace = await svc['agent'].run(payload.task_description, payload.agent_id, payload.dataset_type, context_prefix, resume_state=resume_state, task_id=restored_task_id)
-    final_report_result = await svc['gateway'].chat(
+
+    # Internal investigation/recovery narrative — proof of the tool-trace/checkpoint/recovery
+    # mechanics, kept as evidence rather than shown to the customer as the reply.
+    investigation_report_result = await svc['gateway'].chat(
         system='You write concise final recovery reports from durable agent traces. Do not claim unsupported facts.',
         user=(
             f"Create a final recovery report for this SupportMemory run.\n"
@@ -659,20 +662,43 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
         prefer_strong=not payload.simulate_model_failure,
         max_tokens=520,
     )
+    tool_investigation_summary = trace.final_output
+
+    # Customer-facing reply — answers the actual message using recalled profile, conversation
+    # history, and KB context (all real/dynamic), instead of narrating the mock tool's fixed output.
+    customer_reply_result = await svc['gateway'].chat(
+        system=(
+            'You are SupportMemory, a customer support agent. Reply directly and helpfully to the '
+            'customer message using only the recalled profile, conversation history, and knowledge-base '
+            'context provided below. Never re-ask for information already given there. Be concise and '
+            'natural, like a real support reply, not a status report.'
+        ),
+        user=(
+            f"Customer message: {payload.task_description}\n\n"
+            f"Recalled context (do not re-ask for anything listed here):\n{context_prefix or 'none'}\n"
+        ),
+        prefer_strong=not payload.simulate_model_failure,
+        max_tokens=420,
+    )
+
     trace.metadata['model_routing'] = {
         'plan_provider': plan_result.provider,
         'plan_model': plan_result.model,
         'plan_used_fallback': plan_result.used_fallback,
         'plan_attempts': svc['gateway'].attempts_as_dicts(plan_result.attempts),
-        'final_report_provider': final_report_result.provider,
-        'final_report_model': final_report_result.model,
-        'final_report_used_fallback': final_report_result.used_fallback,
-        'final_report_attempts': svc['gateway'].attempts_as_dicts(final_report_result.attempts),
+        'final_report_provider': investigation_report_result.provider,
+        'final_report_model': investigation_report_result.model,
+        'final_report_used_fallback': investigation_report_result.used_fallback,
+        'final_report_attempts': svc['gateway'].attempts_as_dicts(investigation_report_result.attempts),
+        'customer_reply_provider': customer_reply_result.provider,
+        'customer_reply_model': customer_reply_result.model,
+        'customer_reply_used_fallback': customer_reply_result.used_fallback,
     }
     trace.metadata['gateway_plan'] = plan_result.content
-    trace.metadata['gateway_final_report'] = final_report_result.content
-    if final_report_result.content:
-        trace.final_output = f"{trace.final_output}\n\nGateway recovery report:\n{final_report_result.content}"
+    trace.metadata['investigation_report'] = investigation_report_result.content
+    trace.metadata['tool_investigation_summary'] = tool_investigation_summary
+    if customer_reply_result.content:
+        trace.final_output = customer_reply_result.content
     if kb_hits:
         trace.metadata['kb_hits'] = [hit.model_dump() for hit in kb_hits]
     if multimodal_records:
@@ -727,6 +753,8 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
         parent_checkpoint_id=payload.parent_checkpoint_id,
         idempotency_key=payload.idempotency_key,
         model_trace=trace.metadata.get('model_routing', {}),
+        investigation_report=trace.metadata.get('investigation_report'),
+        tool_investigation_summary=trace.metadata.get('tool_investigation_summary'),
     )
 
 
@@ -743,7 +771,7 @@ async def run_failure_recovery_demo(svc=Depends(get_services)):
     task_response = await run_task(demo_payload, Response(), svc)
     model_trace = task_response.model_trace or {}
     attempts = model_trace.get('plan_attempts', []) + model_trace.get('final_report_attempts', [])
-    final_report = task_response.final_output
+    final_report = task_response.investigation_report or task_response.final_output
     return RecoveryDemoResponse(
         task_response=task_response,
         final_report=final_report,

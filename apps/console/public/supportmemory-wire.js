@@ -370,7 +370,7 @@
   };
 
   function applyTaskResponse(inv, resp, opts = {}) {
-    const model = resp.model_trace?.final_report_model || resp.model_trace?.plan_model || "Qwen";
+    const model = resp.model_trace?.customer_reply_model || resp.model_trace?.final_report_model || resp.model_trace?.plan_model || "Qwen";
     const hits = [];
     (resp.retrieved_rules || []).forEach((r) => {
       hits.push({
@@ -391,6 +391,8 @@
       `recovery: ${resp.recovery_status || "none"}`,
       `rules: ${(resp.retrieved_rules || []).length}`,
       opts.extraLog || "",
+      resp.tool_investigation_summary ? `\ntool investigation:\n${resp.tool_investigation_summary}` : "",
+      resp.investigation_report ? `\ninvestigation report:\n${resp.investigation_report}` : "",
     ]
       .filter(Boolean)
       .join("\n");
@@ -432,7 +434,7 @@
       extraLog: `duration: ${ms}`,
     });
     inv.duration = ms;
-    inv.model = taskResp.model_trace?.final_report_model || taskResp.model_trace?.plan_model || inv.model;
+    inv.model = taskResp.model_trace?.customer_reply_model || taskResp.model_trace?.final_report_model || taskResp.model_trace?.plan_model || inv.model;
     return taskResp;
   }
 

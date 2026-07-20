@@ -422,6 +422,8 @@ class TaskRunResponse(BaseModel):
     idempotency_key: Optional[str] = None
     storage_context_record: StorageContextRecord = Field(default_factory=StorageContextRecord)
     model_trace: Dict[str, Any] = Field(default_factory=dict)
+    investigation_report: Optional[str] = None
+    tool_investigation_summary: Optional[str] = None
 
 
 class CheckpointRestoreResponse(BaseModel):

@@ -958,16 +958,16 @@ function App() {
                     />
                     <button type="button" className="mic-button" onClick={() => void toggleRecording()} aria-label={recording ? "Stop dictation" : "Dictate with microphone"} title={recording ? "Stop dictation" : "Dictate with microphone"}><span className="mic-icon" aria-hidden="true"><i></i></span></button>
                     <button type="button" className="voice-button" onClick={() => { setVoiceOpen(true); setVoiceTranscript(""); setVoiceReply(""); }} aria-label="Open voice conversation" title="Open voice conversation"><span className="voice-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span></button>
-                    <button
-                      type={busy ? "button" : "submit"}
-                      className={busy ? "stop-button" : "send-button"}
-                      disabled={!busy && ((!draft.trim() && !attachments.length) || transcribing || recording)}
-                      onClick={
-                        busy ? () => abortRef.current?.abort() : undefined
-                      }
-                    >
-                      {busy ? "Stop" : "Send"}
-                    </button>
+                    {(busy || Boolean(draft.trim())) && (
+                      <button
+                        type={busy ? "button" : "submit"}
+                        className={busy ? "stop-button" : "send-button"}
+                        disabled={!busy && (transcribing || recording)}
+                        onClick={busy ? () => abortRef.current?.abort() : undefined}
+                      >
+                        {busy ? "Stop" : "Send"}
+                      </button>
+                    )}
                   </div>
                   <p className="composer-hint">
                     Enter to send · Shift + Enter for a new line · Draft saved

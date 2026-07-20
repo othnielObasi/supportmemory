@@ -1,4 +1,5 @@
 import "./knowledge.css";
+import { authenticatedFetch, signOut } from "./session";
 
 type DocumentSummary = { document_id: string; title: string; source_type: string; source_system: string; chunk_count: number; tags: string[]; created_at: string; agent_id: string };
 type SearchHit = { chunk_id: string; document_id: string; title: string; score: number; text: string; source_type?: string };
@@ -38,7 +39,7 @@ const escapeHtml = (value: unknown) => String(value ?? "").replace(/[&<>"']/g, (
 const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const setBusy = (busy: boolean) => root.classList.toggle("busy", busy);
 function notify(message: string, error = false) { const node = element<HTMLDivElement>("notice"); node.textContent = message; node.className = `notice ${error ? "error" : "success"}`; node.hidden = false; window.setTimeout(() => { node.hidden = true; }, 4200); }
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> { const response = await fetch(apiBase + path, { ...init, headers: { ...headers(!(init.body instanceof FormData)), ...init.headers } }); if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || `Request failed (${response.status})`); return response.json(); }
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> { const response = await authenticatedFetch(apiBase + path, { ...init, headers: { ...headers(!(init.body instanceof FormData)), ...init.headers } }); if (!response.ok) throw new Error((await response.json().catch(() => null))?.detail || `Request failed (${response.status})`); return response.json(); }
 
 async function loadTenantContext() {
   const context = await request<EnterpriseContext>("/api/enterprise/context");
@@ -61,7 +62,7 @@ async function loadDocuments() {
 }
 
 element<HTMLButtonElement>("refresh").addEventListener("click", () => void loadDocuments());
-element<HTMLButtonElement>("sign-out").addEventListener("click", () => { sessionStorage.removeItem("supportmemory.access_token"); ["sm.organisation", "sm.workspace", "sm.project", "sm.environment"].forEach((key) => localStorage.removeItem(key)); window.location.assign("/"); });
+element<HTMLButtonElement>("sign-out").addEventListener("click", signOut);
 element<HTMLButtonElement>("clear-search").addEventListener("click", () => { element<HTMLInputElement>("query").value = ""; element("results").hidden = true; });
 element<HTMLFormElement>("search-form").addEventListener("submit", async (event) => { event.preventDefault(); const query = element<HTMLInputElement>("query").value.trim(); if (query.length < 3) return notify("Enter at least three characters.", true); setBusy(true); try { const response = await request<{ hits: SearchHit[] }>("/api/kb/search", { method: "POST", body: JSON.stringify({ query, agent_id: "ticket-investigation-agent", top_k: 5 }) }); const hits = element("hits"); hits.innerHTML = response.hits.length ? response.hits.map((hit) => `<article class="hit"><header><strong>${escapeHtml(hit.title)}</strong><span>${Math.round(hit.score * 100)}% match</span></header><p>${escapeHtml(hit.text)}</p><small>${escapeHtml(hit.source_type || "Knowledge chunk")} · ${escapeHtml(hit.chunk_id)}</small></article>`).join("") : '<div class="state">No relevant passages found. Try a broader query.</div>'; element("results").hidden = false; } catch (error) { notify(error instanceof Error ? error.message : "Search failed", true); } finally { setBusy(false); } });
 element<HTMLFormElement>("text-form").addEventListener("submit", async (event) => { event.preventDefault(); const title = element<HTMLInputElement>("title").value.trim(); const text = element<HTMLTextAreaElement>("text").value.trim(); if (text.length < 20) return notify("Source text must contain at least 20 characters.", true); setBusy(true); try { const response = await request<{ chunk_count: number }>("/api/kb/ingest", { method: "POST", body: JSON.stringify({ title, text, source_type: "policy", tags: ["ui", "supportmemory"], agent_id: "ticket-investigation-agent" }) }); element<HTMLFormElement>("text-form").reset(); notify(`Source indexed in ${response.chunk_count} chunk${response.chunk_count === 1 ? "" : "s"}.`); await loadDocuments(); } catch (error) { notify(error instanceof Error ? error.message : "Ingestion failed", true); } finally { setBusy(false); } });

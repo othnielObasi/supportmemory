@@ -21,6 +21,21 @@ export interface EnterpriseContext {
   auth_required: boolean;
 }
 
+export interface VoiceTranscription {
+  enabled: boolean;
+  transcript?: string;
+  message: string;
+  resolved_language?: string;
+}
+
+export interface VoiceAudio {
+  enabled: boolean;
+  audio_base64?: string;
+  mime_type: string;
+  message: string;
+  resolved_language?: string;
+}
+
 export interface RetrievedRule {
   rule_id: string;
   score: number;
@@ -125,7 +140,7 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 45_0
   const timeout = window.setTimeout(() => controller.abort("timeout"), timeoutMs);
   const token = sessionStorage.getItem("supportmemory.access_token");
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await authenticatedFetch(`${baseUrl}${path}`, {
       ...init,
       signal: init.signal || controller.signal,
       headers: {
@@ -175,4 +190,8 @@ export const api = {
   executeAction: (taskId: string, body: Record<string, unknown>) =>
     request<{ action_id: string; replayed: boolean; decision: string; result: Record<string, unknown> }>(`/api/runs/${encodeURIComponent(taskId)}/actions/execute`, { method: "POST", body: JSON.stringify(body) }),
   receipt: (traceId: string) => request<Record<string, unknown>>(`/api/traces/${encodeURIComponent(traceId)}/receipt`),
+  transcribeVoice: (body: Record<string, unknown>) => request<VoiceTranscription>("/api/voice/transcribe", { method: "POST", body: JSON.stringify(body) }, 90_000),
+  synthesizeVoice: (body: Record<string, unknown>) => request<VoiceAudio>("/api/voice/run-summary", { method: "POST", body: JSON.stringify(body) }, 90_000),
+  setLanguage: (body: { user_id: string; language: string }) => request<Record<string, unknown>>("/api/preferences/language", { method: "PUT", body: JSON.stringify(body) }),
 };
+import { authenticatedFetch } from "./session";

@@ -55,6 +55,7 @@ from app.models.schemas import (
     KbSearchResponse,
     MultimodalAnalyzeRequest,
     MultimodalAnalyzeResponse,
+    ModifyTaskRequest,
     VoiceTranscribeRequest,
     VoiceTranscribeResponse,
     LanguagePreferenceRequest,

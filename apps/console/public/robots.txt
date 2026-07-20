@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /workspace.html
+Disallow: /knowledge.html
+Disallow: /integrations.html
+Disallow: /login

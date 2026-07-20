@@ -20,44 +20,6 @@ from app.services.embedding_service import EmbeddingService
 from app.services.search_ranking import rank_score
 
 
-DEMO_KB_DOCS = [
-    {
-        "title": "Refund policy — SupportMemory KB",
-        "source_type": "policy",
-        "tags": ["refunds", "billing"],
-        "text": (
-            "Refunds may be approved within 30 days of purchase when the customer reports a payment failure "
-            "or duplicate charge. Prefer issuing a refund over forcing a retry when the payment processor "
-            "already marked the charge as settled. Always confirm the original ticket ID and processor "
-            "reference before approving. Do not ask the customer to re-enter card details if a prior "
-            "investigation already confirmed a processor-side decline."
-        ),
-    },
-    {
-        "title": "Ticket pagination SOP",
-        "source_type": "sop",
-        "tags": ["tickets", "pagination"],
-        "text": (
-            "When fetching support tickets from a paginated helpdesk API, continue fetching until "
-            "next_page_token is null before producing a final answer. Partial page summaries are incomplete "
-            "and must not be treated as a closed investigation. Preserve page_token in the checkpoint so a "
-            "crashed run can resume without re-fetching completed pages."
-        ),
-    },
-    {
-        "title": "Escalation preferences",
-        "source_type": "preference",
-        "tags": ["escalation", "preferences"],
-        "text": (
-            "Enterprise customers prefer chat escalation over email when a billing dispute exceeds $500. "
-            "Remember prior customer preference: do not re-ask channel preference if it was recorded on an "
-            "earlier ticket in the same account. Compliance holds block refunds until a human reviewer clears "
-            "the case — the agent must surface the hold instead of inventing a workaround."
-        ),
-    },
-]
-
-
 class KbIngestService:
     """Real document/KB ingestion: paste text → chunk → embed → Postgres → retrieve."""
 
@@ -249,26 +211,6 @@ class KbIngestService:
                 )
             )
         return hits
-
-    async def seed_demo(self, agent_id: str = "ticket-investigation-agent") -> List[KbIngestResponse]:
-        existing = await self.store.find_many("kb_documents", limit=5)
-        if existing:
-            return []
-        results: List[KbIngestResponse] = []
-        for doc in DEMO_KB_DOCS:
-            results.append(
-                await self.ingest(
-                    KbIngestRequest(
-                        title=doc["title"],
-                        text=doc["text"],
-                        source_type=doc["source_type"],
-                        source_system="kb_demo",
-                        tags=doc["tags"],
-                        agent_id=agent_id,
-                    )
-                )
-            )
-        return results
 
     def _chunk_text(self, text: str, chunk_chars: int, overlap: int) -> List[str]:
         cleaned = " ".join(text.split())

@@ -5,7 +5,7 @@ type SearchHit = { chunk_id: string; document_id: string; title: string; score: 
 type TenantContext = { organisation_id: string; workspace_id: string; project_id: string; environment_id: string };
 type EnterpriseContext = { principal: TenantContext; role: string; scopes: string[]; auth_required: boolean };
 
-const apiBase = (new URLSearchParams(location.search).get("api") || "http://localhost:8000").replace(/\/$/, "");
+const apiBase = (new URLSearchParams(location.search).get("api") || import.meta.env.VITE_API_BASE_URL || location.origin).replace(/\/$/, "");
 const token = sessionStorage.getItem("supportmemory.access_token");
 let tenant: TenantContext = { organisation_id: localStorage.getItem("sm.organisation") || "org_default", workspace_id: localStorage.getItem("sm.workspace") || "wrk_default", project_id: localStorage.getItem("sm.project") || "prj_default", environment_id: localStorage.getItem("sm.environment") || "dev" };
 const headers = (json = true): HeadersInit => ({ Accept: "application/json", ...(json ? { "Content-Type": "application/json" } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}), "X-Organisation-Id": tenant.organisation_id, "X-Workspace-Id": tenant.workspace_id, "X-Project-Id": tenant.project_id, "X-Environment-Id": tenant.environment_id });
@@ -14,7 +14,7 @@ const root = document.getElementById("knowledge-root")!;
 root.innerHTML = `
   <header class="private-topbar">
     <a class="private-brand" href="/workspace.html"><span>S</span><div><strong>SupportMemory</strong><small>Private workspace</small></div></a>
-    <nav aria-label="Application navigation"><a href="/workspace.html">Investigations</a><a class="active" href="/knowledge.html" aria-current="page">Knowledge</a></nav>
+    <nav aria-label="Application navigation"><a href="/workspace.html">Investigations</a><a class="active" href="/knowledge.html" aria-current="page">Knowledge</a><a href="/integrations.html">Integrations</a></nav>
     <div class="private-session"><span id="api-state">Connecting</span><div id="operator-avatar" aria-label="Signed in operator">OO</div><button id="sign-out">Sign out</button></div>
   </header>
   <main class="knowledge-page">

@@ -49,6 +49,17 @@ services:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
       SIGNING_SECRET: ${SIGNING_SECRET:-replace-with-a-secure-secret}
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:-}
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-http://localhost:8000}
+      PUBLIC_CONSOLE_URL: ${PUBLIC_CONSOLE_URL:-http://localhost:3000}
+      ZENDESK_OAUTH_CLIENT_ID: ${ZENDESK_OAUTH_CLIENT_ID:-}
+      ZENDESK_OAUTH_CLIENT_SECRET: ${ZENDESK_OAUTH_CLIENT_SECRET:-}
+      INTERCOM_OAUTH_CLIENT_ID: ${INTERCOM_OAUTH_CLIENT_ID:-}
+      INTERCOM_OAUTH_CLIENT_SECRET: ${INTERCOM_OAUTH_CLIENT_SECRET:-}
+      SLACK_OAUTH_CLIENT_ID: ${SLACK_OAUTH_CLIENT_ID:-}
+      SLACK_OAUTH_CLIENT_SECRET: ${SLACK_OAUTH_CLIENT_SECRET:-}
+      SLACK_SIGNING_SECRET: ${SLACK_SIGNING_SECRET:-}
+      INTEGRATION_ALLOWED_REST_HOSTS: ${INTEGRATION_ALLOWED_REST_HOSTS:-}
       BOOTSTRAP_ADMIN_TOKEN: ${BOOTSTRAP_ADMIN_TOKEN:-}
       DEFAULT_ORGANISATION_ID: ${DEFAULT_ORGANISATION_ID:-org_default}
       DEFAULT_WORKSPACE_ID: ${DEFAULT_WORKSPACE_ID:-wrk_default}
@@ -73,11 +84,24 @@ services:
       api:
         condition: service_started
 
+  integration-worker:
+    build:
+      context: .
+      dockerfile: workers/integration-worker/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://tracememory:tracememory@postgres:5432/tracememory_dev
+      INTEGRATION_ENCRYPTION_KEY: ${INTEGRATION_ENCRYPTION_KEY:-}
+      INTEGRATION_WORKER_POLL_SECONDS: ${INTEGRATION_WORKER_POLL_SECONDS:-2}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   console:
     build: ./apps/console
     ports:
       - "3000:3000"
-    command: npm run dev -- --host 0.0.0.0 --port 3000 --strictPort
     depends_on:
       api:
         condition: service_started

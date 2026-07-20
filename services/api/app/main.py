@@ -9,6 +9,9 @@ from fastapi.responses import ORJSONResponse
 from app.api import router
 from app.enterprise_api import router as enterprise_router
 from app.context_health.router import router as context_health_router
+from app.integrations.router import router as integrations_router
+from app.integrations.webhook_router import router as integration_webhook_router
+from app.integrations.oauth_router import router as integration_oauth_router
 from app.config import get_settings
 from app.db.postgres import PostgresStore
 
@@ -16,8 +19,20 @@ settings = get_settings()
 store = PostgresStore(settings)
 
 
+def validate_production_settings(candidate) -> None:
+    if candidate.environment != 'production':
+        return
+    if not candidate.auth_required:
+        raise RuntimeError('AUTH_REQUIRED must be true in production')
+    if not candidate.integration_encryption_key:
+        raise RuntimeError('INTEGRATION_ENCRYPTION_KEY is required in production')
+    if candidate.signing_secret == 'replace-with-a-secure-secret':
+        raise RuntimeError('SIGNING_SECRET must be replaced in production')
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    validate_production_settings(settings)
     await store.connect()
     yield
     await store.close()
@@ -72,3 +87,6 @@ async def ready():
 app.include_router(router, prefix=settings.api_prefix)
 app.include_router(enterprise_router, prefix=f'{settings.api_prefix}/enterprise')
 app.include_router(context_health_router, prefix=f'{settings.api_prefix}/context-health', tags=['context-health'])
+app.include_router(integrations_router, prefix=f'{settings.api_prefix}/enterprise')
+app.include_router(integration_webhook_router, prefix=settings.api_prefix)
+app.include_router(integration_oauth_router, prefix=settings.api_prefix)

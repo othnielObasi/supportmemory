@@ -327,7 +327,7 @@ function App() {
           <div className="brand-mark" aria-hidden="true">S</div>
           <div><strong>SupportMemory</strong><span>Agent workspace</span></div>
         </div>
-        <div className="app-navigation"><div className="workspace-switcher" title={`Organisation ${tenantLabel.organisation} · ${tenantLabel.role}`}><span className="eyebrow">Workspace</span><strong>{tenantLabel.workspace.replace("wrk_", "")}</strong></div><a href="/knowledge.html">Knowledge</a></div>
+        <div className="app-navigation"><div className="workspace-switcher" title={`Organisation ${tenantLabel.organisation} · ${tenantLabel.role}`}><span className="eyebrow">Workspace</span><strong>{tenantLabel.workspace.replace("wrk_", "")}</strong></div><a href="/knowledge.html">Knowledge</a><a href="/integrations.html">Integrations</a></div>
         <div className={`connection ${apiState}`} role="status"><i />{apiLabel}</div>
         <div className="account-actions"><div className="avatar-button" aria-label="Signed in operator">OO</div><button onClick={signOut}>Sign out</button></div>
       </header>

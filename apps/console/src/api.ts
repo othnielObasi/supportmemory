@@ -104,7 +104,7 @@ export class ApiError extends Error {
 }
 
 const queryBase = new URLSearchParams(window.location.search).get("api");
-const baseUrl = (queryBase || import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+const baseUrl = (queryBase || import.meta.env.VITE_API_BASE_URL || location.origin).replace(/\/$/, "");
 let tenantContext: TenantContext = {
   organisation_id: localStorage.getItem("sm.organisation") || "org_default",
   workspace_id: localStorage.getItem("sm.workspace") || "wrk_default",

@@ -26,6 +26,9 @@ DEFAULT_SCOPES = {
     "gateways:write",
     "audit:read",
     "admin:manage",
+    "integrations:read",
+    "integrations:write",
+    "integrations:deliver",
 }
 
 ROLE_SCOPES = {
@@ -50,9 +53,11 @@ ROLE_SCOPES = {
         "tools:read",
         "tools:execute",
         "audit:read",
+        "integrations:read",
+        "integrations:deliver",
     },
-    "auditor": {"runs:read", "checkpoints:read", "memory:read", "tools:read", "gateways:read", "audit:read"},
-    "viewer": {"runs:read", "checkpoints:read", "memory:read", "tools:read", "gateways:read"},
+    "auditor": {"runs:read", "checkpoints:read", "memory:read", "tools:read", "gateways:read", "audit:read", "integrations:read"},
+    "viewer": {"runs:read", "checkpoints:read", "memory:read", "tools:read", "gateways:read", "integrations:read"},
 }
 
 

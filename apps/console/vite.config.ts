@@ -10,6 +10,7 @@ export default defineConfig({
         product: resolve(__dirname, 'index.html'),
         workspace: resolve(__dirname, 'workspace.html'),
         knowledge: resolve(__dirname, 'knowledge.html'),
+        integrations: resolve(__dirname, 'integrations.html'),
       },
     },
   },

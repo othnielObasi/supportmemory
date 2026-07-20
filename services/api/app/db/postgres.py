@@ -58,6 +58,10 @@ PRODUCTION_COLLECTIONS = [
     'fallback_events',
     'recovery_records',
     'audit_reports',
+    'integrations',
+    'integration_events',
+    'integration_deliveries',
+    'integration_oauth_states',
 ]
 
 
@@ -134,6 +138,10 @@ class PostgresStore:
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_action_idempotency ON trace_memory_records ((data->>'workspace_id'), (data->>'idempotency_key')) WHERE collection = 'action_executions' AND data ? 'idempotency_key'",
             "DROP INDEX IF EXISTS uq_tm_idempotency_keys",
             "CREATE UNIQUE INDEX uq_tm_idempotency_keys ON trace_memory_records ((data->>'workspace_id'), (data->>'key')) WHERE collection = 'idempotency_keys' AND data ? 'key'",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_integration_event_external ON trace_memory_records ((data->>'integration_id'), (data->>'external_event_id')) WHERE collection = 'integration_events'",
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_integration_delivery_idempotency ON trace_memory_records ((data->>'integration_id'), (data->>'idempotency_key')) WHERE collection = 'integration_deliveries' AND data->>'direction' = 'outbound'",
+            "CREATE INDEX IF NOT EXISTS idx_tm_integration_event_due ON trace_memory_records ((data->>'status'), ((data->>'next_attempt_at')::timestamptz)) WHERE collection = 'integration_events'",
+            "CREATE INDEX IF NOT EXISTS idx_tm_integration_delivery_due ON trace_memory_records ((data->>'status'), ((data->>'next_attempt_at')::timestamptz)) WHERE collection = 'integration_deliveries' AND data->>'direction' = 'outbound'",
         ]
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -170,6 +178,25 @@ class PostgresStore:
                 created_at,
             )
         return record_id
+
+    async def insert_if_absent(self, collection: str, doc: Dict[str, Any]) -> bool:
+        """Insert without replacing an existing id or expression-index conflict."""
+        record = self._normalise_doc(doc)
+        record_id = str(record.get('_id') or record.get('id'))
+        if not record_id or record_id == 'None':
+            raise ValueError(f"Document inserted into {collection} must include '_id' or 'id'")
+        created_at = self._coerce_datetime(record.get('created_at')) or datetime.now(timezone.utc)
+        async with self._acquire() as conn:
+            inserted = await conn.fetchval(
+                """
+                INSERT INTO trace_memory_records(collection, id, data, created_at, updated_at)
+                VALUES ($1, $2, $3::jsonb, $4, now())
+                ON CONFLICT DO NOTHING
+                RETURNING true
+                """,
+                collection, record_id, json.dumps(record, separators=(',', ':'), default=str), created_at,
+            )
+        return bool(inserted)
 
     async def upsert_one(self, collection: str, query: Dict[str, Any], update: Dict[str, Any]) -> None:
         existing = await self.find_one_by(collection, query)
@@ -241,6 +268,62 @@ class PostgresStore:
 
     async def latest_checkpoint(self, task_id: str) -> Optional[Dict[str, Any]]:
         return await self.find_one_by('task_checkpoints', {'task_id': task_id}, sort=[('created_at', DESCENDING)])
+
+    async def lease_integration_event(self, worker_id: str, lease_seconds: int = 60) -> Optional[Dict[str, Any]]:
+        """Atomically claim one due integration event across concurrent workers."""
+        async with self._acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                WITH candidate AS (
+                    SELECT id FROM trace_memory_records
+                    WHERE collection = 'integration_events'
+                        AND (
+                            (data->>'status' IN ('queued', 'retrying')
+                             AND COALESCE((data->>'next_attempt_at')::timestamptz, now()) <= now())
+                            OR
+                            (data->>'status' = 'processing'
+                             AND COALESCE((data->>'lease_expires_at')::timestamptz, '-infinity'::timestamptz) <= now())
+                        )
+                    ORDER BY created_at
+                    FOR UPDATE SKIP LOCKED LIMIT 1
+                )
+                UPDATE trace_memory_records r
+                SET data = r.data || jsonb_build_object(
+                    'status', 'processing', 'lease_owner', $1,
+                    'lease_expires_at', (now() + ($2 || ' seconds')::interval)::text,
+                    'updated_at', now()::text
+                ), updated_at = now()
+                FROM candidate WHERE r.collection = 'integration_events' AND r.id = candidate.id
+                RETURNING r.data
+                """,
+                worker_id, str(lease_seconds),
+            )
+        return self._decode_row(row)
+
+    async def lease_integration_delivery(self, worker_id: str, lease_seconds: int = 60) -> Optional[Dict[str, Any]]:
+        async with self._acquire() as conn:
+            row = await conn.fetchrow(
+                """
+                WITH candidate AS (
+                    SELECT id FROM trace_memory_records
+                    WHERE collection = 'integration_deliveries' AND data->>'direction' = 'outbound'
+                        AND (
+                            (data->>'status' IN ('queued', 'retrying')
+                             AND COALESCE((data->>'next_attempt_at')::timestamptz, now()) <= now())
+                            OR
+                            (data->>'status' = 'processing'
+                             AND COALESCE((data->>'lease_expires_at')::timestamptz, '-infinity'::timestamptz) <= now())
+                        )
+                    ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1
+                )
+                UPDATE trace_memory_records r SET data = r.data || jsonb_build_object(
+                    'status', 'processing', 'lease_owner', $1,
+                    'lease_expires_at', (now() + ($2 || ' seconds')::interval)::text, 'updated_at', now()::text
+                ), updated_at = now() FROM candidate
+                WHERE r.collection = 'integration_deliveries' AND r.id = candidate.id RETURNING r.data
+                """, worker_id, str(lease_seconds),
+            )
+        return self._decode_row(row)
 
     async def delete_all(self) -> None:
         async with self._acquire() as conn:

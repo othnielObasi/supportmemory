@@ -1,10 +1,9 @@
 import pytest
 
 from app.config import Settings
-from app.models.schemas import HelpdeskMockTicketRequest, KbIngestRequest
+from app.models.schemas import KbIngestRequest
 from app.services.context_builder import ContextBuilder
 from app.services.embedding_service import EmbeddingService
-from app.services.helpdesk_connector import fetch_helpdesk_mock
 from app.services.kb_ingest_service import KbIngestService
 from app.db.postgres import PRODUCTION_COLLECTIONS
 
@@ -73,27 +72,6 @@ async def test_kb_context_builder_includes_knowledge_section():
     assert "next_page_token" in prefix
 
 
-def test_helpdesk_mock_connector_is_zendesk_shaped():
-    response = fetch_helpdesk_mock(HelpdeskMockTicketRequest(source_system="zendesk_mock"))
-    assert response.source_system == "zendesk_mock"
-    assert response.connector == "helpdesk_webhook_api"
-    assert "id" in response.ticket
-    assert "subject" in response.ticket
-    assert isinstance(response.comments, list)
-
-
 def test_production_collections_include_kb():
     assert "kb_documents" in PRODUCTION_COLLECTIONS
     assert "kb_chunks" in PRODUCTION_COLLECTIONS
-
-
-@pytest.mark.asyncio
-async def test_seed_demo_is_idempotent():
-    settings = Settings(embedding_provider="hash", embedding_dimensions=64)
-    store = MemoryStore()
-    kb = KbIngestService(store, EmbeddingService(settings), settings)
-
-    first = await kb.seed_demo()
-    second = await kb.seed_demo()
-    assert len(first) == 3
-    assert second == []

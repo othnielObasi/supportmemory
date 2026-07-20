@@ -683,23 +683,6 @@ class KbSearchResponse(BaseModel):
     context_prefix: str
 
 
-class HelpdeskMockTicketRequest(BaseModel):
-    """Zendesk/Freshdesk-shaped mock connector request (demo sources)."""
-    ticket_id: Optional[str] = None
-    dataset_type: str = "support_tickets"
-    page_token: Optional[str] = None
-    source_system: str = Field(default="zendesk_mock", pattern="^(zendesk_mock|freshdesk_mock)$")
-
-
-class HelpdeskMockTicketResponse(BaseModel):
-    source_system: str
-    connector: str = "helpdesk_webhook_api"
-    ticket: Dict[str, Any]
-    comments: List[Dict[str, Any]] = Field(default_factory=list)
-    next_page_token: Optional[str] = None
-    note: str = "Mock connector — same shape as a live Zendesk/Freshdesk webhook/API ingest."
-
-
 class MultimodalAnalyzeRequest(BaseModel):
     prompt: str = Field(
         default="Describe this support evidence for a customer-support agent. Extract errors, UI text, and likely root cause.",

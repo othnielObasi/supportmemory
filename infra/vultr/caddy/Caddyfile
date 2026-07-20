@@ -1,0 +1,10 @@
+# Replace demo.example.com with your domain.
+demo.example.com {
+  reverse_proxy console:5174
+}
+api.demo.example.com {
+  reverse_proxy api:8000
+}
+agent.demo.example.com {
+  reverse_proxy ticket-agent-demo:5173
+}

@@ -1,0 +1,77 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: tracememory_dev
+      POSTGRES_USER: tracememory
+      POSTGRES_PASSWORD: tracememory
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tracememory -d tracememory_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./services/api
+    ports:
+      - "8000:8000"
+    environment:
+      APP_NAME: TraceMemory
+      DATABASE_URL: ${DATABASE_URL:-postgresql://tracememory:tracememory@postgres:5432/tracememory_dev}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      DEFAULT_MODEL_GATEWAY: ${DEFAULT_MODEL_GATEWAY:-mock}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-false}
+      SIGNING_SECRET: ${SIGNING_SECRET:-replace-with-a-secure-secret}
+      BOOTSTRAP_ADMIN_TOKEN: ${BOOTSTRAP_ADMIN_TOKEN:-}
+      DEFAULT_ORGANISATION_ID: ${DEFAULT_ORGANISATION_ID:-org_default}
+      DEFAULT_WORKSPACE_ID: ${DEFAULT_WORKSPACE_ID:-wrk_default}
+      DEFAULT_PROJECT_ID: ${DEFAULT_PROJECT_ID:-prj_default}
+      DEFAULT_ENVIRONMENT_ID: ${DEFAULT_ENVIRONMENT_ID:-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  recovery-worker:
+    build: ./services/api
+    command: python /app/workers/recovery-worker/main.py
+    environment:
+      TRACEMEMORY_API_BASE_URL: http://api:8000
+      TRACEMEMORY_WORKER_API_KEY: ${TRACEMEMORY_WORKER_API_KEY:-}
+      TRACEMEMORY_WORKER_POLL_SECONDS: ${WORKER_POLL_INTERVAL_SECONDS:-5}
+    volumes:
+      - ./workers:/app/workers:ro
+    depends_on:
+      api:
+        condition: service_started
+
+  console:
+    build: ./apps/console
+    ports:
+      - "3000:3000"
+    command: npm run dev -- --host 0.0.0.0 --port 3000 --strictPort
+    depends_on:
+      api:
+        condition: service_started
+
+  ticket-agent-demo:
+    build: ./apps/ticket-agent-demo
+    ports:
+      - "5173:5173"
+    command: npm run dev -- --host 0.0.0.0 --port 3000 --strictPort
+    depends_on:
+      api:
+        condition: service_started
+
+volumes:
+  postgres_data:

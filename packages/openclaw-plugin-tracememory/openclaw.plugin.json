@@ -1,0 +1,13 @@
+{
+  "name": "tracememory",
+  "displayName": "TraceMemory for OpenClaw",
+  "version": "0.1.0",
+  "description": "Adds durable execution memory, checkpoints, context health, tool traces, recovery state and execution receipts to OpenClaw agents.",
+  "entry": "dist/index.js",
+  "configuration": {
+    "TRACEMEMORY_API_URL": "http://localhost:8000/api",
+    "TRACEMEMORY_API_KEY": "",
+    "TRACEMEMORY_WORKSPACE_ID": "wrk_default",
+    "TRACEMEMORY_PROJECT_ID": "prj_default"
+  }
+}

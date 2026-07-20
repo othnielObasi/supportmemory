@@ -1,0 +1,14 @@
+[
+  "request_received",
+  "understanding_generated",
+  "plan_prepared",
+  "runtime_decision",
+  "tool_execution_started",
+  "trace_recorded",
+  "checkpoint_saved",
+  "interruption_detected",
+  "checkpoint_restored",
+  "task_modified",
+  "memory_created_or_retrieved",
+  "final_answer"
+]

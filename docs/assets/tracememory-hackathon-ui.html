@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TraceMemory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;800&family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color: #0f172a; background: #fff; }
+a { color: inherit; text-decoration: none; }
+
+:root {
+  --purple: #7c3aed;
+  --dark: #0f172a;
+  --gray-700: #475569;
+  --gray-600: #64748b;
+  --gray-500: #94a3b8;
+  --gray-300: #e2e8f0;
+  --gray-100: #f8f9fc;
+  --gray-50: #f7f7f5;
+  --green: #10b981;
+  --green-bg: #d1fae5;
+  --green-border: #a7f3d0;
+  --green-text: #065f46;
+  --blue-bg: #dbeafe;
+  --blue-border: #bfdbfe;
+  --blue-text: #2563eb;
+  --yellow-bg: #fef3c7;
+  --yellow-border: #fde68a;
+  --yellow-text: #92400e;
+  --border: #e2e8f0;
+  --white: #fff;
+}
+
+.nav { display:flex; align-items:center; justify-content:space-between; height:80px; padding:0 80px; border-bottom:1px solid var(--border); background:var(--white); position:sticky; top:0; z-index:100; }
+.brand { display:flex; align-items:center; gap:12px; cursor:pointer; }
+.brand-icon { width:32px; height:32px; background:var(--purple); border-radius:6px; display:flex; align-items:center; justify-content:center; }
+.brand-icon svg { width:20px; height:20px; }
+.brand-name { font-family:'Unbounded',sans-serif; font-weight:700; font-size:18px; }
+.nav-links { display:flex; gap:32px; }
+.nav-links a { font-size:14px; font-weight:500; color:var(--gray-700); transition:color .15s; }
+.nav-links a:hover,.nav-links a.active { color:var(--dark); }
+.nav-actions { display:flex; align-items:center; gap:24px; }
+.nav-actions .sign-in { font-size:14px; font-weight:500; color:var(--gray-700); }
+.btn-primary { display:inline-flex; align-items:center; gap:8px; padding:10px 20px; background:var(--purple); color:var(--white); font-size:14px; font-weight:600; border-radius:100px; border:none; cursor:pointer; }
+.btn-primary:hover { opacity:.9; }
+.btn-secondary { display:inline-flex; align-items:center; gap:8px; padding:10px 20px; background:var(--gray-50); color:var(--dark); font-size:14px; font-weight:600; border-radius:100px; border:1px solid var(--border); cursor:pointer; }
+.btn-outline-dark { display:inline-flex; align-items:center; gap:8px; padding:10px 20px; background:transparent; color:var(--dark); font-size:14px; font-weight:600; border-radius:100px; border:1px solid var(--border); cursor:pointer; }
+
+.page { display:none; }
+.page.active { display:block; }
+
+.landing-hero { text-align:center; padding:120px 80px 0; position:relative; }
+.hackathon-badge { display:inline-flex; padding:6px 14px; background:var(--gray-100); border:1px solid var(--border); border-radius:100px; font-size:13px; font-weight:600; color:var(--gray-700); margin-bottom:40px; }
+.landing-hero h1 { font-family:'Unbounded',sans-serif; font-size:72px; font-weight:800; line-height:1.05; max-width:900px; margin:0 auto 32px; }
+.landing-hero .sub { font-size:20px; color:var(--gray-700); max-width:700px; margin:0 auto 40px; line-height:1.6; }
+.hero-ctas { display:flex; gap:16px; justify-content:center; margin-bottom:24px; }
+.hero-notes { display:flex; flex-direction:column; gap:8px; align-items:center; margin-bottom:80px; }
+.hero-notes span { font-size:14px; color:var(--gray-600); }
+
+.console-mockup { max-width:900px; margin:0 auto 0; background:#1e293b; border-radius:12px; overflow:hidden; text-align:left; box-shadow:0 24px 48px rgba(0,0,0,.15); }
+.console-titlebar { display:flex; align-items:center; gap:8px; padding:14px 16px; background:#162032; }
+.console-dot { width:10px; height:10px; border-radius:50%; }
+.console-dot.r { background:#ef4444; }
+.console-dot.y { background:#eab308; }
+.console-dot.g { background:#22c55e; }
+.console-body { padding:24px; display:grid; grid-template-columns:1fr 1fr; gap:24px; }
+.console-panel { display:flex; flex-direction:column; gap:12px; }
+.console-panel-title { font-size:14px; font-weight:700; color:#f1f5f9; }
+.console-row { display:flex; justify-content:space-between; align-items:center; font-size:12px; color:#94a3b8; padding:6px 0; border-bottom:1px solid rgba(255,255,255,.06); }
+.console-row .mono { font-family:'Geist Mono',monospace; color:#e2e8f0; }
+.console-badge-sm { font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; }
+.console-badge-sm.live { background:rgba(34,197,94,.15); color:#22c55e; }
+.console-badge-sm.pass { background:rgba(34,197,94,.15); color:#22c55e; }
+.console-badge-sm.verified { background:rgba(124,58,237,.15); color:#a78bfa; }
+
+.pillars { display:grid; grid-template-columns:repeat(4,1fr); gap:0; padding:120px 80px; }
+.pillar { padding:0 32px; border-left:2px solid var(--border); }
+.pillar:first-child { border-left:none; padding-left:0; }
+.pillar-num { font-size:20px; font-weight:700; color:var(--purple); margin-bottom:8px; }
+.pillar-title { font-size:20px; font-weight:700; margin-bottom:12px; }
+.pillar-desc { font-size:15px; color:var(--gray-600); line-height:1.6; }
+
+.pipeline-section { text-align:center; padding:120px 80px; background:var(--gray-100); }
+.pipeline-section h2 { font-family:'Unbounded',sans-serif; font-size:40px; font-weight:700; margin-bottom:16px; }
+.pipeline-section .sub { font-size:18px; color:var(--gray-600); max-width:600px; margin:0 auto 64px; }
+.loop-steps { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; max-width:1000px; margin:0 auto 48px; }
+.loop-step { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:20px; text-align:left; }
+.loop-step-num { font-size:12px; font-weight:700; color:var(--purple); margin-bottom:8px; }
+.loop-step-title { font-size:14px; font-weight:700; margin-bottom:4px; }
+.loop-step-desc { font-size:13px; color:var(--gray-600); }
+.pipeline-note { font-size:16px; color:var(--gray-600); font-style:italic; max-width:700px; margin:0 auto; }
+
+.demo-callout { text-align:center; padding:120px 80px; }
+.demo-callout h2 { font-family:'Unbounded',sans-serif; font-size:32px; font-weight:700; margin-bottom:16px; }
+.demo-callout .sub { font-size:18px; color:var(--gray-600); max-width:700px; margin:0 auto 48px; line-height:1.6; }
+.demo-cards { display:grid; grid-template-columns:1fr 1fr; gap:32px; max-width:900px; margin:0 auto; }
+.demo-card { background:#1e293b; border-radius:12px; padding:24px; text-align:left; }
+.demo-card code { font-family:'Geist Mono',monospace; font-size:14px; color:#e2e8f0; display:block; margin-bottom:16px; }
+.demo-card .env-vars { display:flex; flex-direction:column; gap:4px; }
+.demo-card .env-var { font-family:'Geist Mono',monospace; font-size:11px; color:#94a3b8; }
+.demo-card pre { font-family:'Geist Mono',monospace; font-size:14px; color:#e2e8f0; white-space:pre-wrap; line-height:1.7; }
+
+.integrated-section { text-align:center; padding:120px 80px; background:var(--gray-100); }
+.integrated-section h2 { font-family:'Unbounded',sans-serif; font-size:40px; font-weight:700; margin-bottom:16px; }
+.integrated-section .sub { font-size:18px; color:var(--gray-600); max-width:700px; margin:0 auto 48px; line-height:1.6; }
+.sdk-list { max-width:700px; margin:0 auto; text-align:left; }
+.sdk-item { display:flex; align-items:center; gap:12px; padding:16px 0; border-bottom:1px solid var(--border); font-size:15px; font-weight:600; cursor:pointer; }
+.sdk-item::before { content:''; width:6px; height:6px; background:var(--purple); border-radius:50%; flex-shrink:0; }
+.sdk-item span { font-weight:400; color:var(--gray-600); margin-left:4px; }
+
+.feature-section { padding:120px 80px; display:grid; grid-template-columns:1fr 1fr; gap:80px; align-items:center; }
+.feature-section.reverse { direction:rtl; }
+.feature-section.reverse > * { direction:ltr; }
+.feature-section.alt-bg { background:var(--gray-100); }
+.feature-label { font-size:12px; font-weight:700; color:var(--purple); text-transform:uppercase; letter-spacing:.5px; margin-bottom:16px; }
+.feature-title { font-family:'Unbounded',sans-serif; font-size:40px; font-weight:700; margin-bottom:16px; line-height:1.15; }
+.feature-desc { font-size:18px; color:var(--gray-600); line-height:1.6; margin-bottom:24px; }
+.feature-visual { background:#1e293b; border-radius:12px; padding:24px; }
+.feature-visual pre { font-family:'Geist Mono',monospace; font-size:14px; color:#e2e8f0; white-space:pre-wrap; line-height:1.6; }
+.receipt-card { background:var(--white); border:1px solid var(--border); border-radius:12px; padding:20px; }
+.receipt-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+.receipt-title { font-size:12px; font-weight:700; color:var(--gray-500); }
+.receipt-badge { font-size:11px; font-weight:700; padding:4px 8px; border-radius:4px; background:var(--green-bg); color:var(--green-text); }
+.receipt-rows { display:flex; flex-direction:column; gap:8px; }
+.receipt-row { display:flex; justify-content:space-between; font-size:13px; }
+.receipt-row .label { color:var(--gray-500); font-size:11px; }
+.receipt-row .value { font-family:'Geist Mono',monospace; color:var(--gray-700); }
+
+.drift-visual { display:flex; flex-direction:column; gap:12px; }
+.drift-block { background:var(--white); border:1px solid var(--border); border-radius:8px; padding:16px; }
+.drift-block-label { font-size:12px; font-weight:700; color:var(--gray-500); margin-bottom:6px; }
+.drift-block-text { font-size:12px; color:var(--gray-600); font-family:'Geist Mono',monospace; }
+.drift-block.flagged { border-color:#ef4444; background:#fef2f2; }
+.drift-block.flagged .drift-block-label { color:#ef4444; }
+
+.learning-section { padding:120px 80px; }
+.learning-section h2 { font-family:'Unbounded',sans-serif; font-size:40px; font-weight:700; text-align:center; margin-bottom:64px; }
+.learning-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:32px; max-width:1000px; margin:0 auto 48px; }
+.learning-card { border:1px solid var(--border); border-radius:12px; padding:32px; }
+.learning-card h3 { font-size:20px; font-weight:700; margin-bottom:4px; }
+.learning-card .api { font-size:11px; font-weight:600; color:var(--purple); font-family:'Geist Mono',monospace; margin-bottom:12px; }
+.learning-card p { font-size:14px; color:var(--gray-600); line-height:1.6; }
+.lesson-example { max-width:600px; margin:0 auto; background:var(--gray-100); border:1px solid var(--border); border-radius:12px; padding:20px; }
+.lesson-example-label { font-size:11px; font-weight:700; color:var(--purple); margin-bottom:8px; }
+.lesson-example-text { font-size:13px; color:var(--gray-700); line-height:1.6; margin-bottom:8px; }
+.lesson-example-note { font-size:12px; color:var(--gray-500); }
+
+.landing-footer { padding:80px; background:var(--dark); color:var(--white); }
+.landing-footer .footer-top { display:flex; justify-content:space-between; margin-bottom:64px; }
+.landing-footer .footer-brand h3 { font-family:'Unbounded',sans-serif; font-size:20px; font-weight:700; margin-bottom:12px; }
+.landing-footer .footer-brand p { font-size:16px; color:#94a3b8; max-width:360px; line-height:1.6; }
+.footer-cols { display:flex; gap:80px; }
+.footer-col h4 { font-size:14px; font-weight:700; margin-bottom:16px; }
+.footer-col a { display:block; font-size:14px; color:#94a3b8; margin-bottom:10px; }
+.footer-col a:hover { color:var(--white); }
+.footer-bottom { border-top:1px solid rgba(255,255,255,.1); padding-top:24px; display:flex; justify-content:space-between; font-size:14px; color:#64748b; }
+
+.console-layout { display:flex; min-height:calc(100vh - 80px); }
+.sidebar { width:260px; background:var(--gray-50); border-right:1px solid var(--border); display:flex; flex-direction:column; justify-content:space-between; padding:24px; flex-shrink:0; }
+.sidebar-nav { display:flex; flex-direction:column; gap:40px; }
+.sidebar-links { display:flex; flex-direction:column; gap:4px; }
+.sidebar-link { display:flex; align-items:center; padding:10px 16px; border-radius:8px; font-size:14px; font-weight:500; color:var(--gray-600); cursor:pointer; }
+.sidebar-link:hover { background:rgba(0,0,0,.04); }
+.sidebar-link.active { background:var(--dark); color:var(--white); font-weight:600; }
+.sidebar-footer { font-size:14px; font-weight:500; color:var(--gray-600); border-top:1px solid var(--border); padding-top:20px; cursor:pointer; }
+.main-content { flex:1; background:var(--white); padding:32px; display:flex; flex-direction:column; gap:48px; }
+.content-header { display:flex; flex-direction:column; gap:16px; }
+.badge-dark { display:inline-flex; padding:4px 8px; background:var(--dark); color:var(--white); font-size:11px; font-weight:700; border-radius:6px; text-transform:uppercase; width:fit-content; }
+.page-title-row { display:flex; align-items:center; justify-content:space-between; }
+.page-title { font-family:'Unbounded',sans-serif; font-size:32px; font-weight:800; }
+.stats-strip { display:grid; grid-template-columns:repeat(4,1fr); border:1px solid var(--border); }
+.stat-card { padding:24px 32px; display:flex; flex-direction:column; gap:8px; border-right:1px solid var(--border); }
+.stat-card:last-child { border-right:none; }
+.stat-label { font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase; }
+.stat-value { font-size:32px; font-weight:700; }
+.stat-desc { font-size:12px; color:var(--gray-600); }
+.section-title-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
+.section-title { font-family:'Unbounded',sans-serif; font-size:20px; font-weight:700; }
+.badge-success { display:inline-flex; padding:4px 8px; background:var(--green-bg); border:1px solid var(--green-border); color:var(--green-text); font-size:11px; font-weight:700; border-radius:6px; }
+.badge-running { display:inline-flex; padding:4px 8px; background:var(--blue-bg); border:1px solid var(--blue-border); color:var(--blue-text); font-size:11px; font-weight:700; border-radius:6px; }
+.badge-warning { display:inline-flex; padding:4px 8px; background:var(--yellow-bg); border:1px solid var(--yellow-border); color:var(--yellow-text); font-size:11px; font-weight:700; border-radius:6px; }
+.data-table { width:100%; border-collapse:collapse; }
+.data-table th { text-align:left; padding:12px 8px; font-size:12px; font-weight:700; color:var(--gray-500); text-transform:uppercase; background:var(--gray-100); border-bottom:1px solid var(--border); }
+.data-table td { padding:16px 8px; border-bottom:1px solid var(--border); vertical-align:middle; }
+.run-name { font-family:'Geist Mono',monospace; font-size:13px; font-weight:600; }
+.run-agent { font-size:12px; color:var(--gray-600); margin-top:4px; }
+.run-detail { font-size:14px; color:var(--gray-600); }
+.checkpoint-id { font-family:'Geist Mono',monospace; font-size:12px; color:var(--gray-500); }
+
+.demo-shell { display:flex; height:calc(100vh - 80px); }
+.demo-sidebar { width:260px; background:var(--gray-50); border-right:1px solid var(--border); padding:20px; display:flex; flex-direction:column; gap:32px; flex-shrink:0; }
+.btn-dark { display:flex; align-items:center; gap:10px; padding:12px 16px; background:var(--dark); color:var(--white); font-size:14px; font-weight:600; border-radius:12px; border:none; cursor:pointer; }
+.btn-outline { display:flex; align-items:center; gap:10px; padding:12px 16px; background:var(--white); color:var(--dark); font-size:14px; font-weight:600; border-radius:12px; border:1px solid var(--border); cursor:pointer; }
+.list-label { font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase; margin-bottom:12px; }
+.run-items { display:flex; flex-direction:column; gap:4px; }
+.run-item { padding:12px; border-radius:10px; cursor:pointer; }
+.run-item:hover { background:rgba(0,0,0,.03); }
+.run-item.active { background:rgba(15,23,42,.03); }
+.run-item-title { font-size:14px; font-weight:600; }
+.run-item-sub { font-size:12px; color:var(--gray-500); margin-top:4px; }
+.run-item-sub.purple { color:var(--purple); }
+.demo-main { flex:1; display:flex; flex-direction:column; }
+.demo-topbar { display:flex; align-items:center; justify-content:space-between; padding:20px 32px; border-bottom:1px solid var(--border); gap:16px; flex-wrap:wrap; }
+.demo-title-info h3 { font-size:16px; font-weight:700; }
+.demo-title-info p { font-size:12px; color:var(--gray-500); margin-top:4px; }
+.switcher-pill { display:flex; background:var(--gray-50); border:1px solid var(--border); border-radius:100px; padding:4px; }
+.switcher-tab { padding:8px 16px; border-radius:100px; font-size:13px; font-weight:600; color:var(--gray-700); cursor:pointer; }
+.switcher-tab.active { background:var(--white); color:var(--dark); }
+.demo-tools { display:flex; align-items:center; gap:12px; }
+.badge-green { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; background:rgba(16,185,129,.08); border:1px solid rgba(16,185,129,.25); color:var(--green); font-size:11px; font-weight:700; border-radius:999px; }
+.badge-green::before { content:''; width:6px; height:6px; background:var(--green); border-radius:50%; }
+.tool-btn { padding:10px 16px; background:var(--white); border:1px solid var(--border); border-radius:8px; font-size:13px; font-weight:600; cursor:pointer; }
+.progress-track { height:2px; background:var(--border); }
+.progress-fill { height:100%; width:32%; background:var(--green); }
+.steps-rail { display:flex; gap:8px; padding:16px 32px; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+.step-pill { padding:6px 12px; border-radius:8px; font-size:12px; font-weight:600; background:var(--white); border:1px solid var(--border); color:var(--gray-500); }
+.step-pill.done { background:rgba(16,185,129,.08); border-color:rgba(16,185,129,.25); color:var(--green); }
+.step-pill.current { background:var(--dark); border-color:var(--dark); color:var(--white); }
+.chat-area { flex:1; display:flex; flex-direction:column; justify-content:space-between; padding-top:48px; overflow-y:auto; }
+.chat-content { max-width:720px; margin:0 auto; display:flex; flex-direction:column; gap:32px; width:100%; padding:0 32px; }
+.callout { padding:20px; background:rgba(16,185,129,.03); border:1px solid var(--green); border-radius:12px; font-size:14px; color:var(--gray-700); line-height:1.6; }
+.msg-user { display:flex; justify-content:flex-end; }
+.msg-user .bubble { background:#1e293b; color:var(--white); padding:20px; border-radius:16px; max-width:560px; font-size:14px; line-height:1.6; }
+.msg-ai .bubble { background:var(--gray-100); border:1px solid var(--border); padding:20px; border-radius:16px; max-width:560px; }
+.bubble-label { font-size:11px; font-weight:700; color:var(--purple); text-transform:uppercase; margin-bottom:8px; }
+.bubble-text { font-size:14px; color:var(--gray-700); line-height:1.6; }
+.composer-area { padding:0 32px 40px; display:flex; justify-content:center; }
+.composer-wrapper { max-width:800px; width:100%; display:flex; flex-direction:column; gap:12px; }
+.input-card { display:flex; align-items:center; gap:16px; padding:12px; background:var(--white); border:1px solid var(--border); border-radius:20px; }
+.input-icon { width:42px; height:42px; background:var(--gray-100); border:1px solid var(--border); border-radius:12px; flex-shrink:0; }
+.input-text { flex:1; font-size:15px; color:var(--gray-700); border:none; outline:none; background:transparent; }
+.send-btn { width:44px; height:44px; background:var(--dark); border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; cursor:pointer; }
+.composer-footer { display:flex; justify-content:space-between; padding:0 8px; font-size:12px; }
+.composer-footer-right { font-weight:700; color:var(--green); cursor:pointer; }
+
+.hero-dev { text-align:center; padding:140px 80px 80px; }
+.hero-badge { display:inline-flex; padding:8px 16px; background:var(--gray-100); border:1px solid var(--border); border-radius:100px; font-size:13px; font-weight:600; color:var(--gray-700); margin-bottom:32px; }
+.hero-dev h1 { font-family:'Unbounded',sans-serif; font-size:48px; font-weight:800; line-height:1.15; max-width:800px; margin:0 auto 24px; }
+.hero-dev p { font-size:18px; color:var(--gray-700); max-width:600px; margin:0 auto; line-height:1.6; }
+.qs-section { display:flex; gap:80px; padding:0 80px 120px; }
+.code-block { flex:1; }
+.code-block-label { font-size:11px; font-weight:700; color:var(--gray-500); text-transform:uppercase; margin-bottom:16px; }
+.code-block pre { background:#1e293b; color:#e2e8f0; padding:24px; border-radius:12px; font-family:'Geist Mono',monospace; font-size:13px; line-height:1.8; overflow-x:auto; }
+.int-paths { flex:1; }
+.int-paths h3 { font-size:20px; font-weight:700; margin-bottom:24px; }
+.path-list { display:flex; flex-direction:column; gap:12px; }
+.path-item { display:flex; align-items:center; gap:12px; font-size:15px; cursor:pointer; }
+.path-item::before { content:''; width:8px; height:8px; background:var(--purple); border-radius:2px; flex-shrink:0; }
+.path-item::after { content:'>'; margin-left:auto; color:var(--gray-500); }
+.concepts-section { padding:0 80px 120px; }
+.concepts-section h2 { font-family:'Unbounded',sans-serif; font-size:32px; font-weight:700; margin-bottom:48px; }
+.concept-row { display:flex; gap:24px; padding:24px 0; border-bottom:1px solid var(--border); }
+.concept-row dt { width:180px; font-size:15px; font-weight:700; flex-shrink:0; }
+.concept-row dd { font-size:15px; color:var(--gray-700); line-height:1.6; }
+.api-section { padding:0 80px 120px; }
+.api-section h2 { font-family:'Unbounded',sans-serif; font-size:32px; font-weight:700; margin-bottom:48px; }
+.api-table { width:100%; border-collapse:collapse; }
+.api-table th { text-align:left; font-size:12px; font-weight:700; color:var(--gray-500); text-transform:uppercase; padding:12px 0; border-bottom:1px solid var(--border); }
+.api-table td { padding:16px 0; border-bottom:1px solid var(--border); font-size:14px; }
+.method-badge { display:inline-block; padding:4px 10px; border-radius:4px; font-size:11px; font-weight:700; font-family:'Geist Mono',monospace; }
+.method-post { background:#dbeafe; color:#1d4ed8; }
+.method-get { background:#d1fae5; color:#065f46; }
+.method-patch { background:#fae8ff; color:#86198f; }
+.method-delete { background:#fee2e2; color:#991b1b; }
+.endpoint { font-family:'Geist Mono',monospace; font-size:13px; }
+
+.int-hero { text-align:center; padding:140px 80px 80px; }
+.int-hero .hero-badge { background:var(--blue-bg); color:var(--blue-text); border:none; }
+.int-hero h1 { font-family:'Unbounded',sans-serif; font-size:48px; font-weight:800; max-width:800px; margin:0 auto 24px; line-height:1.15; }
+.int-hero p { font-size:18px; color:var(--gray-700); max-width:680px; margin:0 auto; line-height:1.6; }
+.int-grid { display:grid; grid-template-columns:1fr 1fr; gap:80px; padding:0 80px 120px; }
+.grid-col h4 { font-family:'Unbounded',sans-serif; font-size:12px; font-weight:700; color:var(--purple); text-transform:uppercase; margin-bottom:24px; }
+.int-row { display:flex; gap:24px; padding:24px 0; border-bottom:1px solid var(--border); }
+.int-row dt { width:180px; font-size:15px; font-weight:700; flex-shrink:0; }
+.int-row dd { font-size:15px; color:var(--gray-700); line-height:1.6; }
+.int-row .sub { font-size:12px; color:var(--gray-500); margin-top:4px; }
+.kb-panel { padding:0 80px 120px; max-width:1100px; }
+.kb-panel h2 { font-family:'Unbounded',sans-serif; font-size:28px; font-weight:700; margin-bottom:12px; }
+.kb-panel .kb-lead { font-size:15px; color:var(--gray-700); line-height:1.6; margin-bottom:28px; max-width:720px; }
+.kb-panel label { display:block; font-size:12px; font-weight:700; color:var(--gray-500); text-transform:uppercase; margin:16px 0 8px; }
+.kb-panel input, .kb-panel textarea { width:100%; border:1px solid var(--border); border-radius:8px; padding:12px 14px; font-family:'Inter',sans-serif; font-size:14px; background:#fff; color:var(--ink); }
+.kb-panel textarea { min-height:140px; resize:vertical; }
+.kb-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:20px; }
+.kb-status { margin-top:16px; font-size:13px; color:var(--gray-700); font-family:'Geist Mono',monospace; white-space:pre-wrap; }
+
+.footer { display:flex; align-items:center; justify-content:space-between; padding:48px 80px; border-top:1px solid var(--border); }
+.footer-left { font-size:14px; color:var(--gray-700); }
+.footer-links { display:flex; gap:24px; }
+.footer-links a { font-size:14px; color:var(--gray-700); }
+</style>
+</head>
+<body>
+<nav class="nav">
+  <div class="brand" onclick="showPage('landing')">
+    <div class="brand-icon"><svg viewBox="0 0 20 20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="14" height="8" rx="1"/><line x1="7" y1="6" x2="7" y2="14"/><line x1="13" y1="6" x2="13" y2="14"/><line x1="7" y1="3" x2="7" y2="6"/><line x1="13" y1="3" x2="13" y2="6"/></svg></div>
+    <span class="brand-name">TraceMemory</span>
+  </div>
+  <div class="nav-links">
+    <a href="#" onclick="goToSection('section-capabilities')">Capabilities</a>
+    <a href="#" onclick="showPage('console')" id="nav-console">Architecture</a>
+    <a href="#" onclick="goToSection('section-solutions')">Solutions</a>
+    <a href="#" onclick="showPage('developers')" id="nav-dev">Developers</a>
+    <a href="#" onclick="showPage('integrations')" id="nav-int">Integrations</a>
+  </div>
+  <div class="nav-actions">
+    <a href="#" class="sign-in">Sign in</a>
+    <button class="btn-primary" onclick="showPage('agent-demo')">Run Demo</button>
+  </div>
+</nav>
+
+<div id="page-landing" class="page active">
+
+  <section class="landing-hero">
+    <div class="hackathon-badge">Qwen Cloud &middot; Track 1: MemoryAgent &middot; Open Source</div>
+    <h1>Your agents fail silently, wander off-task, and leave no proof they ran correctly.</h1>
+    <p class="sub">TraceMemory fixes all three &mdash; recovery, drift detection, and cryptographic receipts for any agent, any vendor. No lock-in.</p>
+    <div class="hero-ctas">
+      <button class="btn-primary" onclick="showPage('agent-demo')">See drift detection live</button>
+      <button class="btn-outline-dark">View on GitHub</button>
+    </div>
+    <div class="hero-notes">
+      <span>&#10022; Works above OpenAI, Anthropic, or any other vendor</span>
+      <span>&#10022; Run fully self-hosted for sensitive data, or managed in the cloud &mdash; same engine, on any PostgreSQL.</span>
+    </div>
+
+    <div class="console-mockup">
+      <div class="console-titlebar">
+        <span class="console-dot r"></span><span class="console-dot y"></span><span class="console-dot g"></span>
+        <span style="color:#94a3b8; font-size:16px; font-weight:700; margin-left:12px;">TraceMemory Console</span>
+        <span class="console-badge-sm live" style="margin-left:8px;">LIVE</span>
+      </div>
+      <div class="console-body">
+        <div class="console-panel">
+          <div class="console-panel-title">Active Traces <span style="color:#94a3b8; font-weight:400; font-size:12px;">4 running</span></div>
+          <div class="console-row"><span class="label" style="font-size:11px; color:#64748b;">Trace ID</span><span class="label" style="font-size:11px; color:#64748b;">Status</span><span class="label" style="font-size:11px; color:#64748b;">Checkpoints</span></div>
+          <div class="console-row"><span class="mono">tm-7f2a91c9</span><span style="color:#22c55e;">&#9679;</span><span>12</span></div>
+          <div class="console-row"><span class="mono">tm-3b44c0d2</span><span style="color:#22c55e;">&#9679;</span><span>8</span></div>
+          <div class="console-row"><span class="mono">tm-9e1a7f3b</span><span style="color:#eab308;">&#9679;</span><span>14</span></div>
+          <div class="console-row"><span class="mono">tm-1c6d8e2f</span><span style="color:#22c55e;">&#9679;</span><span>3</span></div>
+        </div>
+        <div class="console-panel">
+          <div class="console-panel-title">Last Drift Check <span class="console-badge-sm pass" style="margin-left:8px;">PASS</span></div>
+          <div class="console-row"><span style="font-size:12px; color:#64748b;">Checked action</span><span class="mono">fetch_customer_data</span></div>
+          <div class="console-row"><span style="font-size:12px; color:#64748b;">Contract field</span><span class="mono">scope: billing_read_only</span></div>
+          <div style="margin-top:16px;">
+            <div class="console-panel-title">Latest Receipt <span class="console-badge-sm verified" style="margin-left:8px;">VERIFIED</span></div>
+            <div class="console-row"><span style="font-size:12px; color:#64748b;">Signature</span><span class="mono">7p9Zx...Ed25519</span></div>
+            <div class="console-row"><span style="font-size:12px; color:#64748b;">checkpoints_count</span><span class="mono">14</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="pillars" id="section-capabilities">
+    <div class="pillar"><div class="pillar-num">01</div><div class="pillar-title">Recoverable</div><p class="pillar-desc">Restores interrupted runs from durable checkpoints without repeating completed external actions.</p></div>
+    <div class="pillar"><div class="pillar-num">02</div><div class="pillar-title">On-task</div><p class="pillar-desc">Drift detection catches an agent wandering off its task contract before damage is done.</p></div>
+    <div class="pillar"><div class="pillar-num">03</div><div class="pillar-title">Provable</div><p class="pillar-desc">Every run becomes an Ed25519-signed receipt, verifiable offline.</p></div>
+    <div class="pillar"><div class="pillar-num">04</div><div class="pillar-title">Self-improving</div><p class="pillar-desc">Each run produces a signed lesson so the next run starts smarter.</p></div>
+  </section>
+
+  <section class="pipeline-section">
+    <h2>The full continuity loop</h2>
+    <p class="sub">TraceMemory handles the infrastructure gap between model inference and task completion.</p>
+    <div class="loop-steps">
+      <div class="loop-step"><div class="loop-step-num">01</div><div class="loop-step-title">Task contract</div><div class="loop-step-desc">Define goal + approved scope</div></div>
+      <div class="loop-step"><div class="loop-step-num">02</div><div class="loop-step-title">Tool traces</div><div class="loop-step-desc">Every action logged with evidence</div></div>
+      <div class="loop-step"><div class="loop-step-num">03</div><div class="loop-step-title">Checkpoint</div><div class="loop-step-desc">Trusted state saved to PostgreSQL</div></div>
+      <div class="loop-step"><div class="loop-step-num">04</div><div class="loop-step-title">Drift check</div><div class="loop-step-desc">Action judged vs. contract</div></div>
+      <div class="loop-step"><div class="loop-step-num">05</div><div class="loop-step-title">Failure</div><div class="loop-step-desc">Worker interrupted or provider timeout</div></div>
+      <div class="loop-step"><div class="loop-step-num">06</div><div class="loop-step-title">Restore</div><div class="loop-step-desc">Resume from last trusted checkpoint</div></div>
+      <div class="loop-step"><div class="loop-step-num">07</div><div class="loop-step-title">Lesson learned</div><div class="loop-step-desc">Run reflected + curated</div></div>
+      <div class="loop-step"><div class="loop-step-num">08</div><div class="loop-step-title">Signed receipt</div><div class="loop-step-desc">Ed25519-signed export</div></div>
+    </div>
+    <p class="pipeline-note">Observability shows what happened after failure. TraceMemory keeps the run recoverable.</p>
+  </section>
+
+  <section class="demo-callout">
+    <h2>One click. No keys.</h2>
+    <p class="sub">Experience agent recovery and drift detection in under 60 seconds. Our demo environment mocks model responses and tool executions.</p>
+    <div class="demo-cards">
+      <div class="demo-card">
+        <code>docker compose up --build</code>
+        <div class="env-vars">
+          <span class="env-var">DEMO_MODE=true</span>
+          <span class="env-var">DEFAULT_MODEL_GATEWAY=mock</span>
+          <span class="env-var">AUTH_REQUIRED=false</span>
+        </div>
+      </div>
+      <div class="demo-card">
+        <pre>from tracememory import TraceMemoryClient
+client = TraceMemoryClient(api_key='tm_live_x2')
+session = client.create_session(
+    agent_id="finance-v4")
+with session.checkpoint("reasoning") as cp:
+    agent.run_loop(cp)</pre>
+      </div>
+    </div>
+  </section>
+
+  <section class="integrated-section">
+    <h2>Integrated in minutes</h2>
+    <p class="sub">Drop into any existing agent &mdash; no rewrite required. Works with the agent you already have: OpenClaw, LangGraph, CrewAI, or plain API calls.</p>
+    <div class="sdk-list">
+      <div class="sdk-item">Python SDK <span>(Natively integrated checkpointing context managers)</span></div>
+      <div class="sdk-item">TypeScript SDK <span>(Promise-based session recovery for Node/Edge)</span></div>
+      <div class="sdk-item">OpenClaw plugin <span>(One-line continuity for the leading agent framework)</span></div>
+      <div class="sdk-item">MCP/Tool Gateway <span>(Standard Model Context Protocol implementation)</span></div>
+      <div class="sdk-item">REST API <span>(Language-agnostic state management and audits)</span></div>
+    </div>
+  </section>
+
+  <section class="feature-section" id="section-solutions">
+    <div>
+      <div class="feature-label">Provability</div>
+      <h2 class="feature-title">A receipt you can verify yourself, offline.</h2>
+      <p class="feature-desc">Every completed run produces a signed receipt &mdash; task contract, tool evidence, checkpoints, recovery events. Download it and verify it on your own machine.</p>
+      <div class="feature-visual">
+        <pre>python3 tools/verify_receipt.py receipt.json
+
+&gt; content hash MATCH
+&gt; Ed25519 signature VALID</pre>
+      </div>
+    </div>
+    <div>
+      <div class="receipt-card">
+        <div class="receipt-header"><span class="receipt-title">Signed Receipt</span><span class="receipt-badge">VALID</span></div>
+        <div class="receipt-rows">
+          <div class="receipt-row"><span class="label">Trace ID</span><span class="value">tr_98d7...f2a1</span></div>
+          <div class="receipt-row"><span class="label">Signature</span><span class="value">0x5f29c...88e14</span></div>
+          <div class="receipt-row" style="color:var(--green); font-size:13px; font-weight:600;">Integrity check passed</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="feature-section reverse alt-bg">
+    <div>
+      <div class="feature-label">Safety</div>
+      <h2 class="feature-title">Stay on task</h2>
+      <p class="feature-desc">Before the run starts, you define what the agent is allowed to do. If it goes off-task, TraceMemory catches it before any damage is done.</p>
+      <p style="font-size:18px; color:var(--gray-600); line-height:1.6;">TraceMemory monitors tool call sequences against the task contract in real-time. If the agent starts crawling internal docs it shouldn't, we pause the run.</p>
+    </div>
+    <div>
+      <div class="drift-visual">
+        <div class="drift-block"><div class="drift-block-label">TASK_CONTRACT</div><div class="drift-block-text">Allowed calls:<br>/api/search<br>/api/submit</div></div>
+        <div class="drift-block"><div class="drift-block-label">AGENT_ACTION</div><div class="drift-block-text">Observed:<br>/internal/docs<br>/internal/api</div></div>
+        <div class="drift-block flagged"><div class="drift-block-label">FLAGGED: DRIFT</div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="learning-section">
+    <div class="feature-label" style="text-align:center;">Learning</div>
+    <h2>Autonomous self-improvement</h2>
+    <div class="learning-grid">
+      <div class="learning-card">
+        <h3>Reflect</h3>
+        <div class="api">/api/traces/reflect</div>
+        <p>Agent analyzes its own successes and failures after every task completion.</p>
+      </div>
+      <div class="learning-card">
+        <h3>Curate</h3>
+        <div class="api">/api/reflections/curate</div>
+        <p>Human-in-the-loop or automated supervisor promotes key insights into Signed Lessons.</p>
+      </div>
+      <div class="learning-card">
+        <h3>Retrieve</h3>
+        <div class="api">/api/lessons/retrieve</div>
+        <p>Future runs semantically search the lesson database before starting a new task.</p>
+      </div>
+    </div>
+    <div class="lesson-example">
+      <div class="lesson-example-label">EXAMPLE LESSON</div>
+      <p class="lesson-example-text">"Always verify tool output before calling /api/submit. Previous run failed at step 4 because submit was called with unvalidated data &mdash; caused task contract violation."</p>
+      <p class="lesson-example-note">Injected automatically into next run via POST /api/lessons/retrieve.</p>
+    </div>
+  </section>
+
+  <footer class="landing-footer">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <h3>TraceMemory</h3>
+        <p>Keeps long-running agents recoverable, on-task, provable, and self-improving.</p>
+      </div>
+      <div class="footer-cols">
+        <div class="footer-col"><h4>Product</h4><a href="#">Docs</a><a href="#">API</a><a href="#">Console</a></div>
+        <div class="footer-col"><h4>Project</h4><a href="#">GitHub</a><a href="#">Hackathon</a><a href="#">Apache-2.0</a></div>
+        <div class="footer-col"><h4>Built for</h4><a href="#">Qwen Cloud</a><a href="#">Alibaba Cloud</a><a href="#">Track 1: MemoryAgent</a></div>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>&copy; 2026 TraceMemory &middot; Global AI Hackathon Series with Qwen Cloud</span>
+      <span>All demo data is synthetic</span>
+    </div>
+  </footer>
+</div>
+<div id="page-console" class="page">
+  <div class="console-layout">
+    <aside class="sidebar">
+      <div class="sidebar-nav">
+        <div class="brand" onclick="showPage('landing')"><div class="brand-icon"><svg viewBox="0 0 20 20" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"><rect x="3" y="6" width="14" height="8" rx="1"/><line x1="7" y1="6" x2="7" y2="14"/><line x1="13" y1="6" x2="13" y2="14"/><line x1="7" y1="3" x2="7" y2="6"/><line x1="13" y1="3" x2="13" y2="6"/></svg></div><span class="brand-name" style="font-size:16px;">TraceMemory</span></div>
+        <div class="sidebar-links">
+          <div class="sidebar-link active">Overview</div><div class="sidebar-link">Runs</div><div class="sidebar-link">Recovery</div><div class="sidebar-link">Checkpoints</div><div class="sidebar-link">Tool Evidence</div><div class="sidebar-link">Model Routes</div><div class="sidebar-link">Memory</div><div class="sidebar-link">Audit</div><div class="sidebar-link">Settings</div>
+        </div>
+      </div>
+      <div class="sidebar-footer">Log out</div>
+    </aside>
+    <main class="main-content">
+      <div class="content-header">
+        <div class="badge-dark">Enterprise console</div>
+        <div class="page-title-row"><h1 class="page-title">Overview</h1><button class="btn-secondary" id="load-live-btn" onclick="loadLiveConsoleData()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/></svg> Load live data</button></div>
+        <p style="font-size:14px; color:var(--gray-600);" id="console-subtitle">Sample runtime records. Click Load live data to pull real runs from the backend.</p>
+      </div>
+      <div class="stats-strip">
+        <div class="stat-card" id="stat-active"><span class="stat-label">Active runs</span><span class="stat-value">3</span><span class="stat-desc">Tracked workflows</span></div>
+        <div class="stat-card" id="stat-checkpoints"><span class="stat-label">Checkpoints</span><span class="stat-value">14</span><span class="stat-desc">Recoverable states</span></div>
+        <div class="stat-card" id="stat-recovered"><span class="stat-label">Recovered</span><span class="stat-value">2</span><span class="stat-desc">Successful restores</span></div>
+        <div class="stat-card" id="stat-gateways"><span class="stat-label">Gateways</span><span class="stat-value">2</span><span class="stat-desc">Routes registered</span></div>
+      </div>
+      <div>
+        <div class="section-title-row"><h2 class="section-title">Agent runs</h2><span class="badge-success">Audit-ready</span></div>
+        <p style="font-size:14px; color:var(--gray-600); margin-bottom:24px;">Tenant-scoped runtime records for operators and auditors.</p>
+        <table class="data-table" id="runs-table">
+          <thead><tr><th style="width:160px">Run</th><th style="width:140px">Status</th><th>Route / evidence</th><th style="width:180px">Checkpoint</th></tr></thead>
+          <tbody>
+            <tr><td><div class="run-name">run_91a3c7</div><div class="run-agent">incident-agent</div></td><td><span class="badge-success">Recovered</span></td><td class="run-detail">primary &rarr; fallback route</td><td class="checkpoint-id">chk_runtime_001</td></tr>
+            <tr><td><div class="run-name">run_3bf22a</div><div class="run-agent">finance-agent</div></td><td><span class="badge-running">Running</span></td><td class="run-detail">idempotency key active</td><td class="checkpoint-id">chk_finance_004</td></tr>
+            <tr><td><div class="run-name">run_a192ef</div><div class="run-agent">support-agent</div></td><td><span class="badge-warning">Checkpointed</span></td><td class="run-detail">tool evidence stored</td><td class="checkpoint-id">chk_support_017</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<div id="page-agent-demo" class="page">
+  <div class="demo-shell">
+    <aside class="demo-sidebar">
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <button class="btn-dark" onclick="startLiveRun()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> New run</button>
+        <span id="demo-live-status" style="font-size:11px; color:var(--gray-500); margin-top:-8px;">Scripted mode — click New run to go live</span>
+        <button class="btn-outline"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg> Search runs</button>
+        <button class="btn-outline" onclick="runMemoryLesson()"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg> Run memory lesson</button>
+      </div>
+      <div>
+        <div class="list-label">Example runs</div>
+        <div class="run-items">
+          <div class="run-item active" data-scenario="ticket" onclick="selectScenario('ticket')"><div class="run-item-title">Support ticket analysis</div><div class="run-item-sub purple">Runtime evidence</div></div>
+          <div class="run-item" data-scenario="coding" onclick="selectScenario('coding')"><div class="run-item-title">Coding agent &middot; auth refactor</div><div class="run-item-sub purple">Runtime evidence</div></div>
+          <div class="run-item"><div class="run-item-title">Fallback recovery</div><div class="run-item-sub">Runtime evidence</div></div>
+          <div class="run-item"><div class="run-item-title">Tool evidence trace</div><div class="run-item-sub">Runtime evidence</div></div>
+          <div class="run-item"><div class="run-item-title">Duplicate-action prevention</div><div class="run-item-sub">Enterprise pattern</div></div>
+          <div class="run-item"><div class="run-item-title">Incident restart recovery</div><div class="run-item-sub">Runtime evidence</div></div>
+          <div class="run-item"><div class="run-item-title">Vendor evidence review</div><div class="run-item-sub">Enterprise pattern</div></div>
+          <div class="run-item"><div class="run-item-title">KYC review blockers</div><div class="run-item-sub">Enterprise pattern</div></div>
+        </div>
+      </div>
+    </aside>
+    <div class="demo-main">
+      <div class="demo-topbar">
+        <div class="demo-title-info"><h3 id="chat-title">Support ticket analysis</h3><p id="chat-subtitle">Reference app built on TraceMemory runtime continuity infrastructure</p></div>
+        <div class="switcher-pill"><div class="switcher-tab active">Support</div><div class="switcher-tab">Compliance</div><div class="switcher-tab">Finance</div></div>
+        <div class="demo-tools"><span class="badge-green">Planning checkpoint</span><button class="tool-btn">Scripted</button><button class="tool-btn">Inspector</button></div>
+      </div>
+      <div class="progress-track"><div class="progress-fill"></div></div>
+      <div class="steps-rail">
+        <span class="step-pill done"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" style="vertical-align:-1px;margin-right:4px;"><polyline points="20 6 9 17 4 12"/></svg>Request</span>
+        <span class="step-pill current">Plan</span><span class="step-pill">Route</span><span class="step-pill">Checkpoint</span><span class="step-pill">Tool</span><span class="step-pill">Evidence</span><span class="step-pill">Interrupt</span><span class="step-pill">Fallback</span><span class="step-pill">Recover</span><span class="step-pill">Version</span><span class="step-pill">Memory</span><span class="step-pill">Answer</span>
+      </div>
+      <div class="chat-area">
+        <div class="chat-content" id="chat-content">
+          <div class="callout">The agent prepares a retrieval plan and TraceMemory saves a safe checkpoint before tools execute.</div>
+          <div class="msg-user"><div class="bubble">Analyse all support tickets and summarise recurring account issues.</div></div>
+          <div class="msg-ai"><div class="bubble"><div class="bubble-label">Plan</div><div class="bubble-text">Retrieve ticket records, follow continuation signals, validate terminal completion, then summarise recurring issues.</div></div></div>
+          <div class="msg-ai"><div class="bubble"><div class="bubble-label">Checkpoint</div><div class="bubble-text">Pre-tool state saved so the workflow can resume safely if the next step fails.</div></div></div>
+        </div>
+        <div class="composer-area">
+          <div class="composer-wrapper">
+            <div class="input-card"><div class="input-icon"></div><input type="text" class="input-text" id="composer-input" value="Continue the checked support-ticket retrieval."><div class="send-btn"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></div></div>
+            <div class="composer-footer"><span style="color:var(--gray-500);">Plan through gateway &middot; Session: Support-v4</span><span class="composer-footer-right" onclick="viewReceipt()">View runtime evidence</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="page-developers" class="page">
+  <div class="hero-dev"><div class="hero-badge">Developer surface</div><h1>Add reliability to long-running agents in minutes</h1><p>APIs, SDKs, and adapters &mdash; no vendor lock-in, no rewrite.</p></div>
+  <div class="qs-section">
+    <div class="code-block"><div class="code-block-label">Quickstart</div><pre><code><span style="color:#94a3b8">from</span> tracememory <span style="color:#94a3b8">import</span> TraceMemoryClient
+client = TraceMemoryClient(api_key=<span style="color:#a78bfa">"tm_live_x2"</span>)
+session = client.create_session(agent_id=<span style="color:#a78bfa">"finance-v4"</span>)
+<span style="color:#94a3b8">with</span> session.checkpoint(<span style="color:#a78bfa">"reasoning"</span>) <span style="color:#94a3b8">as</span> cp:
+    agent.run_loop(cp)</code></pre></div>
+    <div class="int-paths"><h3>Integration paths</h3><div class="path-list"><div class="path-item">Python SDK</div><div class="path-item">TypeScript SDK</div><div class="path-item">OpenClaw plugin</div><div class="path-item">MCP Tool Gateway</div><div class="path-item">REST API</div></div></div>
+  </div>
+  <div class="concepts-section"><h2>Core concepts</h2><dl>
+    <div class="concept-row"><dt>Run</dt><dd>A single instantiation of an agent task containing one or more checkpoints.</dd></div>
+    <div class="concept-row"><dt>Task contract</dt><dd>The approved tool scope and goal definition enforced at runtime.</dd></div>
+    <div class="concept-row"><dt>Event</dt><dd>Any interaction within a session, including model calls and tool executions.</dd></div>
+    <div class="concept-row"><dt>Tool trace</dt><dd>Evidence of a tool's invocation, input parameters, and raw return value.</dd></div>
+    <div class="concept-row"><dt>Checkpoint</dt><dd>A durable, cryptographically signed state persisted to PostgreSQL.</dd></div>
+    <div class="concept-row"><dt>Context Health</dt><dd>A metric comparing the current run drift against the task contract.</dd></div>
+    <div class="concept-row"><dt>Receipt</dt><dd>An Ed25519-signed export of a completed run, verifiable offline.</dd></div>
+  </dl></div>
+  <div class="api-section"><h2>API Reference</h2><table class="api-table"><thead><tr><th>Method</th><th>Endpoint</th><th>Description</th></tr></thead><tbody>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/tasks/run</td><td>Initiate new agent task contract</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/tasks/recover</td><td>Resume from latest valid checkpoint</td></tr>
+    <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint">/api/tasks/{id}/contract</td><td>Audit original task boundaries</td></tr>
+    <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint">/api/traces/{id}/drift</td><td>Trigger manual drift assessment</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/traces/{id}/reflect</td><td>Generate post-run reflection</td></tr>
+    <tr><td><span class="method-badge method-patch">PATCH</span></td><td class="endpoint">/api/reflections/{id}/curate</td><td>Elevate reflection to lesson</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/lessons/retrieve</td><td>Retrieve lessons + ingested KB for a task</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/kb/ingest</td><td>Ingest real policy/SOP text into KB memory</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/kb/search</td><td>Search ingested knowledge chunks</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/connectors/helpdesk/mock</td><td>Zendesk/Freshdesk-shaped mock ticket source</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/multimodal/analyze</td><td>Analyze image evidence (Qwen-VL / keyless fallback)</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/voice/run-summary</td><td>Spoken run summary via Qwen-TTS</td></tr>
+    <tr><td><span class="method-badge method-post">POST</span></td><td class="endpoint">/api/voice/transcribe</td><td>Speech-to-text via Qwen-ASR</td></tr>
+    <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint">/api/traces/{id}/receipt</td><td>Export signed execution receipt</td></tr>
+    <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint">/api/receipts/public-key</td><td>Get verification key</td></tr>
+    <tr><td><span class="method-badge method-get">GET</span></td><td class="endpoint">/api/meta/state</td><td>Inspect current mock state</td></tr>
+    <tr><td><span class="method-badge method-delete">DELETE</span></td><td class="endpoint">/api/tasks/{id}</td><td>Purge run history and checkpoints</td></tr>
+  </tbody></table></div>
+  <footer class="footer"><span class="footer-left">TraceMemory &copy; 2026 &middot; Apache-2.0</span><div class="footer-links"><a href="#">Privacy</a><a href="#">Security</a><a href="#">Status</a></div></footer>
+</div>
+
+<div id="page-integrations" class="page">
+  <div class="int-hero"><div class="hero-badge">Integrations</div><h1>Use the gateways, tools, and storage your enterprise already trusts.</h1><p>SupportMemory sits above Qwen Cloud, helpdesk connectors, and knowledge sources &mdash; TraceMemory is the memory engine underneath.</p></div>
+  <div class="int-grid">
+    <div class="grid-col"><h4>Integration categories</h4><dl>
+      <div class="int-row"><dt>Model gateways</dt><dd>Qwen Cloud (primary), OpenAI-compatible, Anthropic, Gemini, OpenRouter, Ollama, Azure OpenAI</dd></div>
+      <div class="int-row"><dt>Helpdesk sources</dt><dd>Zendesk / Freshdesk shaped webhook+API connectors (mock today; same contract for live keys)</dd></div>
+      <div class="int-row"><dt>Knowledge bases</dt><dd>Real text/markdown ingest into Postgres chunks &mdash; retrieved into agent context before planning</dd></div>
+      <div class="int-row"><dt>Multimodal</dt><dd>Images via Qwen-VL, KB text, Qwen-TTS + Qwen-ASR &mdash; language self-adjusts to user preference</dd></div>
+      <div class="int-row"><dt>Storage</dt><dd>PostgreSQL runtime store; Alibaba Cloud OSS for signed receipt archival</dd></div>
+      <div class="int-row"><dt>Observability</dt><dd>Runtime events, audit records, model attempts, fallback history</dd></div>
+    </dl></div>
+    <div class="grid-col"><h4>Model roles</h4><dl>
+      <div class="int-row"><dt>Primary</dt><dd>Fast general-purpose model for most steps.<div class="sub">Qwen-Max (Qwen Cloud) &middot; primary for this build</div></dd></div>
+      <div class="int-row"><dt>Fallback</dt><dd>Used automatically if the primary route fails.<div class="sub">Qwen-Plus &middot; Claude Haiku &middot; Gemini Flash</div></dd></div>
+      <div class="int-row"><dt>Low-cost</dt><dd>High-volume, low-complexity steps.<div class="sub">Qwen-Turbo &middot; Claude Haiku</div></dd></div>
+      <div class="int-row"><dt>Synthesis</dt><dd>Final reasoning and output.<div class="sub">o1 &middot; Claude Opus &middot; Gemini 1.5 Ultra</div></dd></div>
+      <div class="int-row"><dt>Memory</dt><dd>Hash embeddings keyless; OpenAI embeddings when keyed.<div class="sub">KB chunks + playbook lessons</div></dd></div>
+    </dl></div>
+  </div>
+  <div class="kb-panel">
+    <h2>Ingest knowledge (real)</h2>
+    <p class="kb-lead">Paste a policy or SOP. SupportMemory chunks it, embeds it, stores it in Postgres, and retrieves it on the next support run. Helpdesk connectors stay mock-shaped for Zendesk/Freshdesk.</p>
+    <label for="kb-title">Document title</label>
+    <input id="kb-title" type="text" value="Refund policy — SupportMemory KB" />
+    <label for="kb-text">Document text</label>
+    <textarea id="kb-text">Refunds may be approved within 30 days of purchase when the customer reports a payment failure or duplicate charge. Prefer issuing a refund over forcing a retry when the payment processor already marked the charge as settled. Always confirm the original ticket ID before approving.</textarea>
+    <label for="kb-query">Search query</label>
+    <input id="kb-query" type="text" value="When can we refund a payment failure?" />
+    <div class="kb-actions">
+      <button class="btn-dark" type="button" onclick="ingestKbDocument()">Ingest document</button>
+      <button class="btn-outline" type="button" onclick="seedKbDemo()">Seed demo KB</button>
+      <button class="btn-outline" type="button" onclick="searchKbDocument()">Search KB</button>
+      <button class="btn-outline" type="button" onclick="probeHelpdeskMock()">Probe Zendesk mock</button>
+      <button class="btn-outline" type="button" onclick="analyzeMultimodalDemo()">Analyze screenshot (multimodal)</button>
+    </div>
+    <div id="kb-status" class="kb-status">Paste text and ingest — works keyless via hash embeddings. Multimodal: Qwen-VL when keyed, deterministic vision fallback otherwise.</div>
+  </div>
+  <footer class="footer"><span class="footer-left">TraceMemory &copy; 2026 &middot; Apache-2.0</span><div class="footer-links"><a href="#">Privacy</a><a href="#">Security</a><a href="#">Status</a></div></footer>
+</div>
+
+<script>
+const LIVE_API_BASE = (new URLSearchParams(location.search).get('api')) || 'http://localhost:8000';
+let LIVE_TRACE_ID = null;
+
+async function apiGet(path) {
+  const r = await fetch(LIVE_API_BASE.replace(/\/$/, '') + path);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function apiPost(path, body) {
+  const r = await fetch(LIVE_API_BASE.replace(/\/$/, '') + path, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {})
+  });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function loadLiveConsoleData() {
+  const btn = document.getElementById('load-live-btn');
+  const subtitle = document.getElementById('console-subtitle');
+  if (btn) { btn.disabled = true; btn.style.opacity = '.6'; }
+  try {
+    const [state, status] = await Promise.all([apiGet('/api/demo/state'), apiGet('/api/system/status')]);
+    const traces = state.traces || [];
+    const checkpoints = state.task_checkpoints || [];
+    const recovered = traces.filter(t => (t.status || '').toLowerCase().includes('recover')).length;
+
+    document.querySelector('#stat-active .stat-value').textContent = traces.length;
+    document.querySelector('#stat-checkpoints .stat-value').textContent = checkpoints.length;
+    document.querySelector('#stat-recovered .stat-value').textContent = recovered;
+    const routing = status.model_routing || {};
+    document.querySelector('#stat-gateways .stat-value').textContent = Object.keys(routing).length;
+    document.querySelector('#stat-gateways .stat-desc').textContent = routing.primary ? ('Primary: ' + routing.primary) : 'Routes registered';
+
+    const tbody = document.querySelector('#runs-table tbody');
+    if (tbody && traces.length) {
+      tbody.innerHTML = traces.slice(0, 8).map(function (t) {
+        const id = (t.id || t._id || 'trace').toString().slice(0, 14);
+        const agent = t.agent_id || 'agent';
+        const st = (t.status || 'recorded');
+        const badgeClass = st.toLowerCase().includes('recover') ? 'badge-success' : st.toLowerCase().includes('run') ? 'badge-running' : 'badge-warning';
+        const detail = t.failure_type ? ('failure: ' + t.failure_type) : 'tool evidence recorded';
+        const chk = (t.task_id || '').toString().slice(0, 16) || '\u2014';
+        return '<tr><td><div class="run-name">' + id + '</div><div class="run-agent">' + agent + '</div></td><td><span class="' + badgeClass + '">' + st + '</span></td><td class="run-detail">' + detail + '</td><td class="checkpoint-id">' + chk + '</td></tr>';
+      }).join('');
+    }
+    if (subtitle) subtitle.textContent = 'Live data loaded from ' + LIVE_API_BASE + ' \u00b7 ' + traces.length + ' runs';
+  } catch (err) {
+    if (subtitle) subtitle.textContent = 'Could not reach backend at ' + LIVE_API_BASE + ' \u2014 showing sample data (' + err.message + ')';
+  } finally {
+    if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
+  }
+}
+
+const SCENARIOS = {
+  ticket: {
+    title: 'Support ticket analysis',
+    subtitle: 'Reference app built on TraceMemory runtime continuity infrastructure',
+    taskDescription: 'Analyse all support tickets and summarise recurring account issues.',
+    agentId: 'ticket-investigation-agent',
+    datasetType: 'compliance_tickets',
+    composerValue: 'Continue the checked support-ticket retrieval.',
+    chatHtml:
+      '<div class="callout">The agent prepares a retrieval plan and TraceMemory saves a safe checkpoint before tools execute.</div>' +
+      '<div class="msg-user"><div class="bubble">Analyse all support tickets and summarise recurring account issues.</div></div>' +
+      '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Plan</div><div class="bubble-text">Retrieve ticket records, follow continuation signals, validate terminal completion, then summarise recurring issues.</div></div></div>' +
+      '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Checkpoint</div><div class="bubble-text">Pre-tool state saved so the workflow can resume safely if the next step fails.</div></div></div>'
+  },
+  coding: {
+    title: 'Coding agent \u00b7 auth refactor',
+    subtitle: 'Same runtime, a different agent \u2014 recover / prove / learn is horizontal infrastructure',
+    taskDescription: 'Refactor the auth module to async and make the full test suite pass.',
+    agentId: 'coding-agent',
+    datasetType: 'code_refactor_evidence',
+    composerValue: 'The agent crashed mid-run (context overflow). Resume from the last safe state.',
+    chatHtml:
+      '<div class="callout">A context-overflow crash kills the agent mid-suite. TraceMemory restores the last checkpoint with edits and test evidence intact.</div>' +
+      '<div class="msg-user"><div class="bubble">Refactor the auth module to async and make the full test suite pass.</div></div>' +
+      '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Tool evidence</div><div class="bubble-text">edit_files changed 7 files in auth/*; run_tests started the suite as a recorded tool call. 14 of 18 tests passed; 4 failures captured with stack traces as evidence, not discarded.</div></div></div>' +
+      '<div class="msg-user"><div class="bubble">The agent crashed mid-run (context overflow). Resume from the last safe state.</div></div>' +
+      '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Recovery</div><div class="bubble-text">Checkpoint restored repo state, prior edits, and test failures. The already-applied schema migration was recognised from evidence and NOT run a second time \u2014 no work repeated.</div></div></div>'
+  }
+};
+let CURRENT_SCENARIO = 'ticket';
+
+function selectScenario(key) {
+  const s = SCENARIOS[key];
+  if (!s) return;
+  CURRENT_SCENARIO = key;
+  document.querySelectorAll('.run-item').forEach(function (el) {
+    el.classList.toggle('active', el.dataset.scenario === key);
+  });
+  const title = document.getElementById('chat-title');
+  const subtitle = document.getElementById('chat-subtitle');
+  const chat = document.getElementById('chat-content');
+  const input = document.getElementById('composer-input');
+  const label = document.getElementById('demo-live-status');
+  if (title) title.textContent = s.title;
+  if (subtitle) subtitle.textContent = s.subtitle;
+  if (chat) chat.innerHTML = s.chatHtml;
+  if (input) input.value = s.composerValue;
+  if (label) label.textContent = 'Scripted mode \u2014 click New run to go live on ' + s.title;
+  LIVE_TRACE_ID = null;
+}
+
+async function startLiveRun() {
+  const label = document.getElementById('demo-live-status');
+  const s = SCENARIOS[CURRENT_SCENARIO];
+  if (label) label.textContent = 'Starting run\u2026';
+  try {
+    const run = await apiPost('/api/tasks/run', {
+      task_description: s.taskDescription,
+      agent_id: s.agentId, dataset_type: s.datasetType, simulate_restart: true
+    });
+    LIVE_TRACE_ID = run.trace_id || run.task_id || null;
+    if (label) label.textContent = LIVE_TRACE_ID ? ('Live \u00b7 trace ' + LIVE_TRACE_ID + ' \u00b7 ' + s.title) : 'Run started (no trace id returned)';
+  } catch (err) {
+    if (label) label.textContent = 'Backend unreachable \u2014 staying in scripted mode (' + err.message + ')';
+  }
+}
+
+async function viewReceipt() {
+  const label = document.getElementById('demo-live-status');
+  if (!LIVE_TRACE_ID) { if (label) label.textContent = 'Click "New run" first to generate a live, signed receipt.'; return; }
+  try {
+    const receipt = await apiGet('/api/traces/' + LIVE_TRACE_ID + '/receipt');
+    const blob = new Blob([JSON.stringify(receipt, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  } catch (err) {
+    if (label) label.textContent = 'Could not fetch receipt: ' + err.message;
+  }
+}
+
+async function runMemoryLesson() {
+  const label = document.getElementById('demo-live-status');
+  const chat = document.getElementById('chat-content');
+  if (label) label.textContent = 'Running memory lesson lifecycle\u2026';
+  try {
+    const result = await apiPost('/api/demo/coding-agent-memory-lesson', {});
+    if (chat) {
+      const rule = result.curated_rule ? result.curated_rule.rule_text : '(no rule curated)';
+      const retrieved = (result.run2.retrieved_rules || []).map(function (r) { return r.rule_text; }).join('; ') || '(none retrieved)';
+      chat.innerHTML =
+        '<div class="callout">Run 1 hit a real test failure. TraceMemory reflected on the trace, curated a rule, and Run 2 retrieved it before planning \u2014 live, not scripted.</div>' +
+        '<div class="msg-user"><div class="bubble">Refactor the auth module to async and make the full test suite pass.</div></div>' +
+        '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Run 1 \u00b7 ' + result.run1.trace_id + '</div><div class="bubble-text">' + result.run1.final_output.split('\n')[0] + '</div></div></div>' +
+        '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Reflection</div><div class="bubble-text">Derived rule: "' + rule + '"</div></div></div>' +
+        '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Curation</div><div class="bubble-text">' + result.curation_reason + '</div></div></div>' +
+        '<div class="msg-user"><div class="bubble">Now run the same async refactor on the billing module.</div></div>' +
+        '<div class="msg-ai"><div class="bubble"><div class="bubble-label">Run 2 \u00b7 memory retrieved</div><div class="bubble-text">Retrieved before planning: "' + retrieved + '". ' + result.run2.final_output.split('\n')[0] + '</div></div></div>';
+    }
+    if (label) label.textContent = result.memory_applied_on_run2 ? 'Memory lesson applied on run 2 \u2014 verified live' : 'Lesson ran, but nothing was retrieved on run 2';
+  } catch (err) {
+    if (label) label.textContent = 'Backend unreachable \u2014 cannot run the live memory lesson (' + err.message + ')';
+  }
+}
+
+function setKbStatus(text) {
+  const el = document.getElementById('kb-status');
+  if (el) el.textContent = text;
+}
+
+async function ingestKbDocument() {
+  const title = (document.getElementById('kb-title') || {}).value || 'Support policy';
+  const text = (document.getElementById('kb-text') || {}).value || '';
+  setKbStatus('Ingesting…');
+  try {
+    const result = await apiPost('/api/kb/ingest', {
+      title: title,
+      text: text,
+      source_type: 'policy',
+      source_system: 'kb',
+      tags: ['supportmemory', 'policy'],
+      agent_id: 'ticket-investigation-agent'
+    });
+    setKbStatus('Ingested ' + result.document_id + ' · ' + result.chunk_count + ' chunks · provider=' + result.embedding_provider);
+  } catch (err) {
+    setKbStatus('Ingest failed — is the API running at ' + LIVE_API_BASE + '? (' + err.message + ')');
+  }
+}
+
+async function seedKbDemo() {
+  setKbStatus('Seeding demo KB…');
+  try {
+    const result = await apiPost('/api/kb/seed-demo', {});
+    if (result.seeded === 0) {
+      setKbStatus('Demo KB already present — search or ingest more text.');
+    } else {
+      setKbStatus('Seeded ' + result.seeded + ' docs: ' + (result.documents || []).map(function (d) { return d.title; }).join(' · '));
+    }
+  } catch (err) {
+    setKbStatus('Seed failed (' + err.message + ')');
+  }
+}
+
+async function searchKbDocument() {
+  const query = (document.getElementById('kb-query') || {}).value || 'refund';
+  setKbStatus('Searching…');
+  try {
+    const result = await apiPost('/api/kb/search', {
+      query: query,
+      agent_id: 'ticket-investigation-agent',
+      top_k: 3
+    });
+    const hits = result.hits || [];
+    if (!hits.length) {
+      setKbStatus('No hits yet — ingest or seed the demo KB first.');
+      return;
+    }
+    setKbStatus(hits.map(function (h, i) {
+      return (i + 1) + '. [' + h.score + '] ' + h.title + '\n   ' + (h.text || '').slice(0, 160);
+    }).join('\n\n'));
+  } catch (err) {
+    setKbStatus('Search failed (' + err.message + ')');
+  }
+}
+
+async function probeHelpdeskMock() {
+  setKbStatus('Calling Zendesk-shaped mock connector…');
+  try {
+    const result = await apiPost('/api/connectors/helpdesk/mock', {
+      source_system: 'zendesk_mock',
+      dataset_type: 'support_tickets'
+    });
+    setKbStatus(
+      'source=' + result.source_system +
+      '\nticket=' + (result.ticket && result.ticket.id) + ' · ' + (result.ticket && result.ticket.subject) +
+      '\ncomments=' + ((result.comments || []).length) +
+      '\nnext_page_token=' + (result.next_page_token || 'null') +
+      '\n' + (result.note || '')
+    );
+  } catch (err) {
+    setKbStatus('Helpdesk probe failed (' + err.message + ')');
+  }
+}
+
+async function analyzeMultimodalDemo() {
+  setKbStatus('Running multimodal vision analyze…');
+  try {
+    const result = await apiPost('/api/multimodal/analyze', {
+      prompt: 'Investigate this payment failure screenshot for a support agent.',
+      ingest_to_kb: true,
+      title: 'Payment decline screenshot',
+      attachment: {
+        type: 'image',
+        caption: 'payment decline screenshot',
+        mime_type: 'image/png',
+        filename: 'payment-error.png'
+      }
+    });
+    setKbStatus(
+      'modality=' + result.modality +
+      '\nprovider=' + result.provider + ' · model=' + result.model +
+      '\nfallback=' + result.used_fallback +
+      '\nsignals=' + (result.extracted_signals || []).join(', ') +
+      '\nkb_document_id=' + (result.kb_document_id || 'none') +
+      '\n\n' + result.summary +
+      '\n\n' + (result.note || '')
+    );
+  } catch (err) {
+    setKbStatus('Multimodal analyze failed (' + err.message + ')');
+  }
+}
+
+function goToSection(sectionId) {
+  showPage('landing');
+  requestAnimationFrame(function() {
+    const el = document.getElementById(sectionId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+}
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-links a').forEach(a => a.classList.remove('active'));
+  const map = { landing:'page-landing', console:'page-console', 'agent-demo':'page-agent-demo', developers:'page-developers', integrations:'page-integrations' };
+  document.getElementById(map[id])?.classList.add('active');
+  if (id==='developers') document.getElementById('nav-dev').classList.add('active');
+  if (id==='integrations') document.getElementById('nav-int').classList.add('active');
+  if (id==='console') document.getElementById('nav-console').classList.add('active');
+  window.scrollTo(0,0);
+}
+document.querySelectorAll('.sidebar-link').forEach(l => l.addEventListener('click', function(){ document.querySelectorAll('.sidebar-link').forEach(x=>x.classList.remove('active')); this.classList.add('active'); }));
+document.querySelectorAll('.run-item').forEach(l => l.addEventListener('click', function(){ document.querySelectorAll('.run-item').forEach(x=>x.classList.remove('active')); this.classList.add('active'); }));
+document.querySelectorAll('.switcher-tab').forEach(l => l.addEventListener('click', function(){ this.parentElement.querySelectorAll('.switcher-tab').forEach(x=>x.classList.remove('active')); this.classList.add('active'); }));
+</script>
+</body>
+</html>

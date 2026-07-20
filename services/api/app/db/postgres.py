@@ -140,8 +140,8 @@ class PostgresStore:
             "CREATE UNIQUE INDEX uq_tm_idempotency_keys ON trace_memory_records ((data->>'workspace_id'), (data->>'key')) WHERE collection = 'idempotency_keys' AND data ? 'key'",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_integration_event_external ON trace_memory_records ((data->>'integration_id'), (data->>'external_event_id')) WHERE collection = 'integration_events'",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_integration_delivery_idempotency ON trace_memory_records ((data->>'integration_id'), (data->>'idempotency_key')) WHERE collection = 'integration_deliveries' AND data->>'direction' = 'outbound'",
-            "CREATE INDEX IF NOT EXISTS idx_tm_integration_event_due ON trace_memory_records ((data->>'status'), ((data->>'next_attempt_at')::timestamptz)) WHERE collection = 'integration_events'",
-            "CREATE INDEX IF NOT EXISTS idx_tm_integration_delivery_due ON trace_memory_records ((data->>'status'), ((data->>'next_attempt_at')::timestamptz)) WHERE collection = 'integration_deliveries' AND data->>'direction' = 'outbound'",
+            "CREATE INDEX IF NOT EXISTS idx_tm_integration_event_due ON trace_memory_records ((data->>'status'), (data->>'next_attempt_at')) WHERE collection = 'integration_events'",
+            "CREATE INDEX IF NOT EXISTS idx_tm_integration_delivery_due ON trace_memory_records ((data->>'status'), (data->>'next_attempt_at')) WHERE collection = 'integration_deliveries' AND data->>'direction' = 'outbound'",
         ]
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -289,8 +289,8 @@ class PostgresStore:
                 )
                 UPDATE trace_memory_records r
                 SET data = r.data || jsonb_build_object(
-                    'status', 'processing', 'lease_owner', $1,
-                    'lease_expires_at', (now() + ($2 || ' seconds')::interval)::text,
+                    'status', 'processing', 'lease_owner', $1::text,
+                    'lease_expires_at', (now() + ($2::text || ' seconds')::interval)::text,
                     'updated_at', now()::text
                 ), updated_at = now()
                 FROM candidate WHERE r.collection = 'integration_events' AND r.id = candidate.id
@@ -317,8 +317,8 @@ class PostgresStore:
                     ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1
                 )
                 UPDATE trace_memory_records r SET data = r.data || jsonb_build_object(
-                    'status', 'processing', 'lease_owner', $1,
-                    'lease_expires_at', (now() + ($2 || ' seconds')::interval)::text, 'updated_at', now()::text
+                    'status', 'processing', 'lease_owner', $1::text,
+                    'lease_expires_at', (now() + ($2::text || ' seconds')::interval)::text, 'updated_at', now()::text
                 ), updated_at = now() FROM candidate
                 WHERE r.collection = 'integration_deliveries' AND r.id = candidate.id RETURNING r.data
                 """, worker_id, str(lease_seconds),

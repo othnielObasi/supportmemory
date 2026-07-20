@@ -207,20 +207,21 @@
   }
 
   function renderSteps(current) {
-    const root = document.getElementById("steps");
+    // Compact single-line stage indicator above the thread — the full pipeline
+    // breakdown lives in the Inspector so the conversation stays the focus.
+    const line = document.getElementById("stage-line");
+    if (line) {
+      const name = STEPS[Math.min(current, STEPS.length - 1)] || STEPS[0];
+      const pct = Math.round((Math.min(current, STEPS.length - 1) / (STEPS.length - 1)) * 100);
+      line.innerHTML = `<span class="stage-label">Stage ${Math.min(current, STEPS.length - 1) + 1}/${STEPS.length} · ${esc(name)}</span>
+        <span class="stage-bar"><i style="width:${pct}%"></i></span>`;
+    }
+    const root = document.getElementById("pipeline-list");
     if (!root) return;
-    root.innerHTML = "";
-    STEPS.forEach((name, idx) => {
-      const s = document.createElement("div");
-      s.className = "step" + (idx < current ? " done" : idx === current ? " current" : "");
-      s.innerHTML = `<span class="mark">${idx < current ? "✓" : String(idx + 1)}</span>${name}`;
-      root.appendChild(s);
-      if (idx < STEPS.length - 1) {
-        const line = document.createElement("div");
-        line.className = "step-line";
-        root.appendChild(line);
-      }
-    });
+    root.innerHTML = STEPS.map((name, idx) => {
+      const state = idx < current ? "done" : idx === current ? "current" : "";
+      return `<div class="pl-step ${state}"><span class="mark">${idx < current ? "✓" : String(idx + 1)}</span>${esc(name)}</div>`;
+    }).join("");
   }
 
   function formatLog(log) {
@@ -256,19 +257,24 @@
   function evidenceChip(log, receipt) {
     if (!log) return "";
     const lines = String(log).split("\n").filter(Boolean);
-    const summary = lines.find((l) => l.startsWith("trace_id") || l.startsWith("task_id")) || `${lines.length} evidence lines`;
+    const summary =
+      lines.find((l) => l.startsWith("trace_id") || l.startsWith("task_id")) ||
+      `${lines.length} evidence ${lines.length === 1 ? "line" : "lines"}`;
     return `<details class="evidence">
-      <summary>🔍 View reasoning &amp; evidence — ${esc(summary)}</summary>
+      <summary>View reasoning &amp; evidence — ${esc(summary)}</summary>
       <div class="log">${formatLog(log)}</div>
     </details>`;
   }
+
+  const AGENT_MARK_SVG =
+    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c-2 3-5 4-5 8a5 5 0 0 0 10 0c0-4-3-5-5-8z"/></svg>';
 
   function messageRow(who, text, opts = {}) {
     const isAgent = opts.role === "agent";
     const isNote = !!opts.note;
     const name = isAgent ? "SupportMemory" : who;
     return `<div class="msg-row ${isAgent ? "agent" : "customer"}${isNote ? " note" : ""}">
-        <div class="avatar" aria-hidden="true">${isAgent ? "🧠" : esc(initials(name))}</div>
+        <div class="avatar" aria-hidden="true">${isAgent ? AGENT_MARK_SVG : esc(initials(name))}</div>
         <div class="msg">
           <div class="who">
             <strong>${esc(name)}</strong>
@@ -354,10 +360,10 @@
   }
 
   window.toggleInspector = function () {
-    const panel = document.getElementById("inspector");
-    const open = panel?.classList.toggle("open");
+    const dash = document.getElementById("dash");
+    const hidden = dash?.classList.toggle("hide-inspector");
     const btn = document.getElementById("inspector-toggle");
-    if (btn) btn.textContent = open ? "Hide Inspector" : "Show Inspector";
+    if (btn) btn.textContent = hidden ? "Show Inspector" : "Hide Inspector";
   };
 
   function applyTaskResponse(inv, resp, opts = {}) {
@@ -845,6 +851,11 @@
   }
 
   // boot
+  if (window.innerWidth <= 1100) {
+    document.getElementById("dash")?.classList.add("hide-inspector");
+    const btn = document.getElementById("inspector-toggle");
+    if (btn) btn.textContent = "Show Inspector";
+  }
   const hash = (location.hash || "#landing").replace("#", "");
   const known = ["landing", "capabilities", "architecture", "dashboard"];
   showPage(known.includes(hash) ? hash : "landing");

@@ -181,6 +181,8 @@ Deploy assets: `infra/alibaba/` (ECS + OSS). Legacy Vultr assets remain under `i
 - **Reflect** on a real execution trace → candidate lesson  
 - **Curate** (safety / PII / dedupe / HMAC) → approved playbook rule  
 - **Retrieve** top‑K rules + KB chunks into context before planning  
+- **User preferences** — name, contact channel, plan tier, extras (`PUT /api/preferences/user`)  
+- **Conversation history** — per-user threads persisted and injected into `POST /api/tasks/run` when `user_id` is set  
 
 ### Knowledge & connectors
 - **Real text/PDF ingest** → chunk → embed → Postgres → search  
@@ -239,6 +241,12 @@ QWEN_EMBEDDING_MODEL=text-embedding-v3
 | POST | `/api/voice/transcribe` | Qwen-ASR transcription |
 | PUT | `/api/preferences/language` | Set user preferred language |
 | GET | `/api/preferences/language/{user_id}` | Read language preference |
+| PUT | `/api/preferences/user` | Upsert name / channel / plan tier / extras |
+| GET | `/api/preferences/user/{user_id}` | Read user profile preferences |
+| POST | `/api/conversations` | Create a per-user conversation thread |
+| GET | `/api/conversations/user/{user_id}` | List conversations for a user |
+| GET | `/api/conversations/{id}` | Load conversation + messages |
+| POST | `/api/conversations/{id}/messages` | Append a message |
 | GET | `/api/governor/policy` | Inspect Runtime Governor policy |
 | POST | `/api/context-health/build` | Build clean context + receipt |
 

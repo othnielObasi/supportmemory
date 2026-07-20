@@ -36,6 +36,8 @@ PRODUCTION_COLLECTIONS = [
     'kb_documents',
     'kb_chunks',
     'user_language_preferences',
+    'user_preferences',
+    'user_conversations',
     'idempotency_keys',
     'organisations',
     'workspaces',
@@ -58,11 +60,10 @@ PRODUCTION_COLLECTIONS = [
 
 class PostgresStore:
     """
-    PostgreSQL-backed document store for TraceMemory.
+    PostgreSQL-backed document store for SupportMemory.
 
-    The service stores each TraceMemory logical collection as JSONB
-    records in PostgreSQL. This gives you a durable relational database option that
-    works locally with Docker, on Render/Railway/Fly, and later on AWS RDS.
+    Each logical collection is stored as JSONB records in PostgreSQL for local
+    Docker demos and cloud Postgres (RDS / Alibaba / etc.).
     """
 
     def __init__(self, settings: Settings):
@@ -118,6 +119,8 @@ class PostgresStore:
             "CREATE INDEX IF NOT EXISTS idx_tm_records_workspace ON trace_memory_records (collection, (data->>'workspace_id'))",
             "CREATE INDEX IF NOT EXISTS idx_tm_records_project ON trace_memory_records (collection, (data->>'project_id'))",
             "CREATE INDEX IF NOT EXISTS idx_tm_records_environment ON trace_memory_records (collection, (data->>'environment_id'))",
+            "CREATE INDEX IF NOT EXISTS idx_tm_records_user_id ON trace_memory_records (collection, (data->>'user_id'))",
+            "CREATE INDEX IF NOT EXISTS idx_tm_records_conversation_id ON trace_memory_records (collection, (data->>'conversation_id'))",
             "CREATE INDEX IF NOT EXISTS idx_tm_records_agent ON trace_memory_records (collection, (data->>'agent_id'))",
             "CREATE INDEX IF NOT EXISTS idx_tm_records_job_status ON trace_memory_records (collection, (data->>'status')) WHERE collection = 'background_jobs'",
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_api_key_hash ON trace_memory_records ((data->>'key_hash')) WHERE collection = 'api_keys' AND data ? 'key_hash'",

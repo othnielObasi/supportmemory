@@ -57,6 +57,12 @@ from app.models.schemas import (
     VoiceTranscribeResponse,
     LanguagePreferenceRequest,
     LanguagePreferenceResponse,
+    UserPreferenceRequest,
+    UserPreferenceResponse,
+    ConversationCreateRequest,
+    ConversationMessageRequest,
+    ConversationResponse,
+    ConversationSummary,
     RetrievalEvent,
     RunEvent,
     RunEventStatus,
@@ -79,6 +85,8 @@ from app.services.curation_service import CurationService
 from app.services.embedding_service import EmbeddingService
 from app.services.voice_service import VoiceService
 from app.services.language_preference_service import LanguagePreferenceService
+from app.services.user_preference_service import UserPreferenceService
+from app.services.conversation_history_service import ConversationHistoryService
 from app.services.fireworks_service import FireworksService
 from app.services.model_gateway import ModelGatewayRegistry
 from app.services.mcp_gateway import MCPGatewayService
@@ -123,6 +131,8 @@ def get_services(store: PostgresStore = Depends(get_store), settings: Settings =
     kb = KbIngestService(store, embeddings, settings)
     multimodal = MultimodalService(settings, gateway, kb=kb)
     language_prefs = LanguagePreferenceService(store)
+    user_prefs = UserPreferenceService(store, language_prefs=language_prefs)
+    conversations = ConversationHistoryService(store)
     return {
         'trace': TraceService(store),
         'reflection': ReflectionService(store, gateway),
@@ -139,6 +149,8 @@ def get_services(store: PostgresStore = Depends(get_store), settings: Settings =
         'gateway': gateway,
         'mcp_gateway': MCPGatewayService(settings),
         'language_prefs': language_prefs,
+        'user_prefs': user_prefs,
+        'conversations': conversations,
         'voice': VoiceService(settings, language_prefs=language_prefs),
         'store': store,
         'settings': settings,
@@ -366,7 +378,7 @@ async def system_status(svc=Depends(get_services)):
         production_features=[
             'durable_run_events', 'strict_tool_traces', 'resumable_checkpoints', 'checkpoint_restore',
             'task_versions', 'memory_lifecycle', 'idempotency_enforcement', 'governor_decision_records',
-            'sse_run_stream', 'system_status_probe', 'gateway_planning', 'model_fallback_trace', 'failure_injection_demo', 'mcp_gateway_config_probe', 'mcp_tool_trace', 'one_click_hackathon_demo', 'judging_readiness_scorecard', 'qwen_tts', 'qwen_asr', 'multilingual_language_preference',
+            'sse_run_stream', 'system_status_probe', 'gateway_planning', 'model_fallback_trace', 'failure_injection_demo', 'mcp_gateway_config_probe', 'mcp_tool_trace', 'one_click_hackathon_demo', 'judging_readiness_scorecard', 'qwen_tts', 'qwen_asr', 'multilingual_language_preference', 'user_preferences', 'conversation_history',
         ],
         mcp_ready=settings.mcp_ready,
         model_routing=svc['gateway'].configured_models,
@@ -501,6 +513,73 @@ async def set_language_preference(payload: LanguagePreferenceRequest, svc=Depend
     return LanguagePreferenceResponse(**pref)
 
 
+@router.get('/preferences/user/{user_id}', response_model=UserPreferenceResponse)
+async def get_user_preference(user_id: str, svc=Depends(get_services)):
+    return UserPreferenceResponse(**(await svc['user_prefs'].get(user_id)))
+
+
+@router.put('/preferences/user', response_model=UserPreferenceResponse)
+async def upsert_user_preference(payload: UserPreferenceRequest, svc=Depends(get_services)):
+    pref = await svc['user_prefs'].upsert(
+        payload.user_id,
+        display_name=payload.display_name,
+        email=payload.email,
+        phone=payload.phone,
+        company=payload.company,
+        contact_channel=payload.contact_channel,
+        plan_tier=payload.plan_tier,
+        preferred_language=payload.preferred_language,
+        timezone=payload.timezone,
+        extras=payload.extras,
+        merge_extras=payload.merge_extras,
+        source='explicit',
+    )
+    return UserPreferenceResponse(**pref)
+
+
+@router.post('/conversations', response_model=ConversationResponse)
+async def create_conversation(payload: ConversationCreateRequest, svc=Depends(get_services)):
+    conv = await svc['conversations'].create(
+        payload.user_id,
+        title=payload.title,
+        channel=payload.channel,
+        metadata=payload.metadata,
+    )
+    return ConversationResponse(**conv)
+
+
+@router.get('/conversations/user/{user_id}', response_model=list[ConversationSummary])
+async def list_user_conversations(user_id: str, limit: int = 20, svc=Depends(get_services)):
+    rows = await svc['conversations'].list_for_user(user_id, limit=min(max(limit, 1), 50))
+    return [ConversationSummary(**row) for row in rows]
+
+
+@router.get('/conversations/{conversation_id}', response_model=ConversationResponse)
+async def get_conversation(conversation_id: str, svc=Depends(get_services)):
+    try:
+        return ConversationResponse(**(await svc['conversations'].get(conversation_id)))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post('/conversations/{conversation_id}/messages', response_model=ConversationResponse)
+async def append_conversation_message(
+    conversation_id: str,
+    payload: ConversationMessageRequest,
+    svc=Depends(get_services),
+):
+    try:
+        conv = await svc['conversations'].append_message(
+            conversation_id,
+            role=payload.role,
+            content=payload.content,
+            metadata=payload.metadata,
+        )
+        return ConversationResponse(**conv)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post('/tasks/run', response_model=TaskRunResponse)
 async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_services)):
     idempotent_response = await maybe_get_idempotent_response(payload, svc['store'])
@@ -515,6 +594,29 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
         retrieved_rules, context_prefix, kb_hits = await svc['retrieval'].retrieve(
             payload.task_description, payload.agent_id, top_k=3, include_kb=True, kb_top_k=3
         )
+
+    user_context_parts: list[str] = []
+    active_conversation_id = payload.conversation_id
+    if payload.user_id and not payload.force_no_context:
+        profile = await svc['user_prefs'].get(payload.user_id)
+        profile_prefix = svc['user_prefs'].context_prefix(profile)
+        if profile_prefix:
+            user_context_parts.append(profile_prefix)
+        try:
+            if active_conversation_id:
+                conv = await svc['conversations'].get(active_conversation_id)
+                if conv['user_id'] != payload.user_id:
+                    raise HTTPException(status_code=403, detail='conversation does not belong to user_id')
+            else:
+                conv = await svc['conversations'].get_or_create_default(payload.user_id)
+                active_conversation_id = conv['conversation_id']
+            history_prefix = svc['conversations'].recent_context_prefix(conv)
+            if history_prefix:
+                user_context_parts.append(history_prefix)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        if user_context_parts:
+            context_prefix = "\n\n".join(part for part in [*user_context_parts, context_prefix] if part)
 
     multimodal_prefix = ''
     multimodal_records: list[dict] = []
@@ -575,6 +677,27 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
         trace.metadata['kb_hits'] = [hit.model_dump() for hit in kb_hits]
     if multimodal_records:
         trace.metadata['multimodal'] = multimodal_records
+    if payload.user_id:
+        trace.metadata['user_id'] = payload.user_id
+    if active_conversation_id:
+        trace.metadata['conversation_id'] = active_conversation_id
+
+    if (
+        payload.user_id
+        and payload.persist_conversation
+        and active_conversation_id
+    ):
+        try:
+            await svc['conversations'].append_turn(
+                payload.user_id,
+                user_content=payload.task_description,
+                assistant_content=trace.final_output or '',
+                conversation_id=active_conversation_id,
+                metadata={'task_id': trace.task_id, 'trace_id': trace.id},
+            )
+        except (KeyError, PermissionError):
+            pass
+
     await svc['trace'].save(trace)
 
     if retrieved_rules or kb_hits:

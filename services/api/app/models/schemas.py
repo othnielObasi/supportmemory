@@ -112,6 +112,10 @@ class RunTaskRequest(BaseModel):
     request_id: str = Field(default_factory=lambda: new_id("req"))
     attachments: List[MultimodalAttachment] = Field(default_factory=list)
     ingest_vision_to_kb: bool = False
+    # Per-user memory: profile + conversation history injected into context_prefix
+    user_id: Optional[str] = Field(default=None, max_length=128)
+    conversation_id: Optional[str] = Field(default=None, max_length=128)
+    persist_conversation: bool = True
 
 
 class RecoverTaskRequest(BaseModel):
@@ -673,6 +677,80 @@ class LanguagePreferenceResponse(BaseModel):
     source: str
     updated_at: Optional[str] = None
     detection_history: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class UserPreferenceRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=128)
+    display_name: Optional[str] = Field(default=None, max_length=200)
+    email: Optional[str] = Field(default=None, max_length=320)
+    phone: Optional[str] = Field(default=None, max_length=64)
+    company: Optional[str] = Field(default=None, max_length=200)
+    contact_channel: Optional[str] = Field(default=None, max_length=64)
+    plan_tier: Optional[str] = Field(default=None, max_length=64)
+    preferred_language: Optional[str] = Field(default=None, max_length=32)
+    timezone: Optional[str] = Field(default=None, max_length=64)
+    extras: Dict[str, Any] = Field(default_factory=dict)
+    merge_extras: bool = True
+
+
+class UserPreferenceResponse(BaseModel):
+    user_id: str
+    display_name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    company: Optional[str] = None
+    contact_channel: str = "unknown"
+    plan_tier: str = "unknown"
+    preferred_language: Optional[str] = None
+    timezone: Optional[str] = None
+    extras: Dict[str, Any] = Field(default_factory=dict)
+    source: str = "default"
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ConversationCreateRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=128)
+    title: Optional[str] = Field(default=None, max_length=200)
+    channel: Optional[str] = Field(default="chat", max_length=64)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationMessageRequest(BaseModel):
+    role: str = Field(default="user", max_length=32)
+    content: str = Field(..., min_length=1, max_length=20_000)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class ConversationMessage(BaseModel):
+    message_id: str
+    role: str
+    content: str
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[str] = None
+
+
+class ConversationResponse(BaseModel):
+    conversation_id: str
+    user_id: str
+    title: str
+    channel: str = "chat"
+    is_default: bool = False
+    message_count: int = 0
+    messages: List[ConversationMessage] = Field(default_factory=list)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class ConversationSummary(BaseModel):
+    conversation_id: str
+    user_id: str
+    title: str
+    channel: str = "chat"
+    is_default: bool = False
+    message_count: int = 0
+    updated_at: Optional[str] = None
 
 
 class PartnerStatus(BaseModel):

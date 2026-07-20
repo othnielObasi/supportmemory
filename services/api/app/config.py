@@ -8,7 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore')
 
-    app_name: str = Field(default='TraceMemory', alias='APP_NAME')
+    app_name: str = Field(default='SupportMemory', alias='APP_NAME')
     environment: str = Field(default='development', alias='ENVIRONMENT')
     api_prefix: str = Field(default='/api', alias='API_PREFIX')
     frontend_origin: str = Field(default='http://localhost:5173', alias='FRONTEND_ORIGIN')

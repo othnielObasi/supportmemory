@@ -1,6 +1,6 @@
 # SupportMemory — a customer support agent that never forgets
 
-**Built on TraceMemory · Track 1: MemoryAgent · Qwen Cloud**
+**Track 1: MemoryAgent · Qwen Cloud**
 
 Support agents that use LLMs today mostly start cold every session. They re-ask questions the customer already answered, re-investigate issues that were already diagnosed, and lose everything if the process crashes mid-task. That is a **memory** problem — not a model problem.
 
@@ -11,11 +11,10 @@ Support agents that use LLMs today mostly start cold every session. They re-ask 
 - **Gets better the second time** it sees a related task (reflect → curate → retrieve)
 - **Proves** what it remembered with a SHA-256 hashed, Ed25519-signed execution receipt (optional Alibaba OSS archive)
 
-**TraceMemory** is the agent-agnostic engine underneath: task contracts, context health, tool traces, hybrid Runtime Governor, checkpoints, recovery, multimodal memory, and receipts.
+Under the hood: task contracts, context health, tool traces, hybrid Runtime Governor, checkpoints, recovery, multimodal memory, and signed receipts.
 
 ```text
-SupportMemory (product)  →  ticket agent, KB, helpdesk connectors, voice
-TraceMemory (infra)      →  remember · forget · recall · recover · prove
+SupportMemory  →  remember · forget · recall · recover · prove
 ```
 
 ---
@@ -88,14 +87,14 @@ Helpdesk connectors stay **Zendesk/Freshdesk-shaped mocks** so judges can run wi
 7. KB / PDF / multimodal evidence can feed the next plan  
 8. Signed execution receipt proves what was recalled and done  
 
-Without TraceMemory: fail → restart → repeat tools → incomplete answer  
-With TraceMemory: checkpoint restored → continue → receipt generated  
+Without SupportMemory: fail → restart → repeat tools → incomplete answer  
+With SupportMemory: checkpoint restored → continue → receipt generated  
 
 ---
 
 ## Architecture
 
-Clear system view of how the frontend, SupportMemory/TraceMemory backend, PostgreSQL, and **Qwen Cloud** connect:
+Clear system view of how the frontend, SupportMemory backend, PostgreSQL, and **Qwen Cloud** connect:
 
 ```mermaid
 flowchart TB
@@ -104,7 +103,7 @@ flowchart TB
     AgentDemo["Ticket Agent Demo<br/>optional"]
   end
 
-  subgraph Runtime["Backend — TraceMemory / SupportMemory"]
+  subgraph Runtime["Backend — SupportMemory"]
     API["FastAPI runtime<br/>:8000"]
     Gov["Runtime Governor<br/>hybrid PII"]
     Mem["Memory loop<br/>reflect → curate → retrieve"]
@@ -250,18 +249,16 @@ Full interactive docs: http://localhost:8000/docs
 ## Repository map
 
 ```text
-tracememory/
+supportmemory/
 ├── apps/console/                 # Main UI (:3000) → hackathon-ui.html
 ├── apps/ticket-agent-demo/       # Reference support chat UI
-├── services/api/                 # FastAPI runtime (SupportMemory + TraceMemory)
+├── services/api/                 # FastAPI runtime
 ├── services/mock-tools/          # Keyless MCP-style ticket/policy tools
 ├── workers/recovery-worker/      # Recovery worker
 ├── packages/sdk-python/          # Python SDK + framework adapters
 ├── packages/sdk-typescript/      # TypeScript SDK
-├── packages/openclaw-plugin-tracememory/
 ├── examples/                     # Reference agents / scenarios
 ├── infra/alibaba/                # Primary cloud deploy (ECS + OSS)
-├── infra/vultr/                  # Legacy deploy assets
 ├── docs/                         # Architecture, judging, API notes
 ├── scripts/e2e_supportmemory.py  # Offline SupportMemory E2E
 ├── HACKATHON_UI.html             # UI source of truth
@@ -270,13 +267,13 @@ tracememory/
 └── LICENSE
 ```
 
-UI design contract: `UI_SOURCE_OF_TRUTH.md` (keep `HACKATHON_UI.html` and the synced copies identical).
+UI design contract: `UI_SOURCE_OF_TRUTH.md`.
 
 ---
 
 ## Why this is not just a dashboard
 
-Observability tools show what happened after failure. SupportMemory / TraceMemory make the run **recoverable and improvable**:
+Observability tools show what happened after failure. SupportMemory makes the run **recoverable and improvable**:
 
 ```text
 Task contract → Context Health → Tool traces → Checkpoint

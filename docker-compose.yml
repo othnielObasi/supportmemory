@@ -20,7 +20,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      APP_NAME: TraceMemory
+      APP_NAME: SupportMemory
       DATABASE_URL: ${DATABASE_URL:-postgresql://tracememory:tracememory@postgres:5432/tracememory_dev}
       ENVIRONMENT: ${ENVIRONMENT:-development}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}

@@ -1,43 +1,70 @@
 # UI Source of Truth
 
-This hackathon package uses a light-theme design system — purple (#7c3aed) accent, Unbounded/Inter/Geist Mono typefaces — with five pages: Landing, Console, Agent Demo, Developers, Integrations, switchable via `showPage()`/`goToSection()` with no page reload.
+SupportMemory uses the Figma file [supportmemory-ui](https://www.figma.com/design/nGKi7cAk6NH1GtjNdqZnXT/tracememory-ui) as the design source of truth.
 
-The visual design must not be redesigned, restyled, darkened, simplified into cards, or converted into a different console aesthetic during further hardening.
+## Canonical frames (Figma)
 
-Canonical UI file:
+| Frame | Role |
+|---|---|
+| `supportmemory-v2` | Marketing landing |
+| `capabilities-page` | Capabilities |
+| `architecture-page` | Architecture |
+| `SupportMemory - Dashboard` | Primary product UI (investigations + inspector) |
+
+Removed from the file:
+
+- `supportmemory-landing` (superseded by v2)
+- `HTML-Export-Code`
+
+## Implemented UI
+
+Canonical file:
 
 - `HACKATHON_UI.html`
 
-Synced copies:
+Synced copies (keep in sync when editing):
 
-- `apps/console/public/hackathon-ui.html`
-- `docs/assets/tracememory-hackathon-ui.html`
+- `apps/console/public/hackathon-ui.html` (hero image path: `/assets/hero-supportmemory.jpg`)
+- `docs/assets/supportmemory-ui.html`
 
-All three must stay byte-identical. If you edit one, copy it over the other two before committing.
+Hero asset:
 
-Allowed changes:
+- `assets/hero-supportmemory.jpg`
+- `apps/console/public/assets/hero-supportmemory.jpg`
 
-- Text updates that clarify TraceMemory as agent recovery infrastructure
-- Backend wiring around the existing demo structure (see "Live data wiring" below)
-- README, API, Alibaba Cloud, and open-source packaging improvements
+### Design system
 
-Not allowed:
+- Accent: amber `#f59e0b` → `#ff5226`
+- Dark surfaces: `#0f1419`
+- Light surfaces: `#fbf9f5` / `#f9fafb`
+- Type: Instrument Serif (display) · Geist · Geist Mono
+- Pages (client-side, no reload): Landing · Capabilities · Architecture · **Dashboard**
 
-- Replacing the original demo layout
-- Changing the approved visual system (colors, type, page structure)
-- Turning the demo into a toy card layout
-- Creating a new UI from scratch
+### Dashboard (priority surface)
 
-## Live data wiring
+Three columns + status bar matching Figma:
 
-The Console and Agent Demo pages call the real backend when reachable:
+1. Investigations sidebar (`+ New investigation`, search, ticket list)
+2. Ticket workspace (step rail, thread, composer)
+3. Live Inspector (memory match, checkpoint, Qwen-Max metrics)
 
-- **Load live data** (Console) → `GET /api/demo/state` + `GET /api/system/status`, replaces sample stat cards and the runs table.
-- **New run** (Agent Demo) → `POST /api/tasks/run`, captures a live `trace_id`.
-- **View runtime evidence** (Agent Demo) → `GET /api/traces/{trace_id}/receipt`, opens the real signed receipt.
+### Live data wiring
 
-All three fail quietly to sample/scripted content if no backend is reachable (safe for judges opening the static file directly). Override the API base with `?api=https://your-host:8000` in the URL.
+Shared client: `assets/supportmemory-wire.js` (console: `/supportmemory-wire.js`).
 
-The core hackathon message remains:
+| UI control | API |
+|---|---|
+| **Ask SupportMemory…** (composer) | `POST /api/tasks/run` + `POST /api/kb/search` |
+| **+ New investigation** / **Pull helpdesk ticket** | `POST /api/connectors/helpdesk/mock` → `POST /api/tasks/run` |
+| **Run recovery demo** | `POST /api/demo/failure-recovery` (+ KB search) |
+| **Load live runs** | `GET /api/demo/state` + `GET /api/system/status` |
+| **View receipt** | `GET /api/traces/{trace_id}/receipt` |
+| **Seed demo KB** | `POST /api/kb/seed-demo` |
+| **Search KB** | `POST /api/kb/search` |
+| **Ingest text** | `POST /api/kb/ingest` |
+| **Upload PDF** | `POST /api/kb/ingest/pdf` |
+| **KB docs list** | `GET /api/kb/documents` |
 
-> TraceMemory makes long-running AI agents recoverable — and gives them memory they can prove.
+Fails quietly to sample content if the API is unreachable. Override with `?api=https://your-host:8000`.
+
+Console on port 3000 redirects to `/hackathon-ui.html`.

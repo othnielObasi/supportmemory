@@ -390,7 +390,7 @@ async def partner_status(svc=Depends(get_services)):
         notes=[
             'Qwen Cloud is used for chat, vision, TTS (Qwen-TTS), and ASR (Qwen-ASR).',
             'Voice language self-adjusts from stored user preference or detected language.',
-            'TraceMemory records gateway attempts, fallback use, checkpoints, and recovery state.',
+            'SupportMemory records gateway attempts, fallback use, checkpoints, and recovery state.',
             'MCP Gateway can be enabled with MCP_GATEWAY_URL and MCP_GATEWAY_API_KEY; local deterministic fallback keeps the same trace shape for demos.',
         ],
     )
@@ -411,7 +411,7 @@ async def generate_gateway_plan(payload: FireworksPlanRequest, svc=Depends(get_s
 async def test_gateway(svc=Depends(get_services)):
     result = await svc['gateway'].chat(
         system='You are a terse health-check responder.',
-        user='Reply with: TraceMemory Bedrock gateway is ready.',
+        user='Reply with: SupportMemory model gateway is ready.',
         cheap_first=True,
         max_tokens=80,
         temperature=0,
@@ -549,7 +549,7 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
     final_report_result = await svc['gateway'].chat(
         system='You write concise final recovery reports from durable agent traces. Do not claim unsupported facts.',
         user=(
-            f"Create a final recovery report for this TraceMemory run.\n"
+            f"Create a final recovery report for this SupportMemory run.\n"
             f"Task: {payload.task_description}\nStatus: {trace.status.value}\nFailure type: {trace.failure_type.value}\n"
             f"Records seen: {trace.metadata.get('records_seen')}\nPages fetched: {trace.metadata.get('pages_fetched')}\n"
             f"Tool calls: {len(trace.tool_calls)}\nOriginal output: {trace.final_output}\n"
@@ -626,9 +626,9 @@ async def run_failure_recovery_demo(svc=Depends(get_services)):
         final_report=final_report,
         gateway_attempts=attempts,
         demo_steps=[
-            'TraceMemory started a durable support-ticket run.',
+            'SupportMemory started a durable support-ticket run.',
             'Primary model failure was intentionally injected before planning.',
-            'Provider-agnostic mock gateway injected a failure and TraceMemory recorded the recovery path.',
+            'Provider-agnostic mock gateway injected a failure and SupportMemory recorded the recovery path.',
             'PostgreSQL checkpoint state was saved with task, context, tool, and recovery metadata.',
             'The final report includes the task contract, checkpoint, tool evidence, recovery path, and receipt summary.',
         ],
@@ -670,7 +670,7 @@ async def test_mcp_gateway(svc=Depends(get_services)):
 
 @router.post('/demo/coding-agent-memory-lesson')
 async def run_coding_agent_memory_lesson(svc=Depends(get_services)):
-    """The actual Track 1 story, made real: a run fails, TraceMemory reflects on the
+    """The actual Track 1 story, made real: a run fails, SupportMemory reflects on the
     real trace, curates a durable rule, and a second run retrieves and applies it
     before planning \u2014 not scripted copy, an executed memory lifecycle."""
     run1_payload = RunTaskRequest(
@@ -706,7 +706,7 @@ async def run_coding_agent_memory_lesson(svc=Depends(get_services)):
         'memory_applied_on_run2': len(run2.retrieved_rules) > 0,
         'demo_steps': [
             'Run 1: coding-agent refactors the auth module; 2 of 4 files fail their tests on a real async DB init ordering issue.',
-            'TraceMemory reflects on the real trace and derives a candidate rule from actual tool evidence, not a template.',
+            'SupportMemory reflects on the real trace and derives a candidate rule from actual tool evidence, not a template.',
             'The rule is validated (safe, generalisable, no PII) and curated into approved execution memory.',
             'Run 2: a related task (billing module) retrieves the curated rule before planning.',
             'The retrieved rule is visible in run 2\'s context_prefix and retrieved_rules \u2014 memory demonstrably carried across runs.',
@@ -747,7 +747,7 @@ async def run_hackathon_10x_demo(svc=Depends(get_services)):
     ]
     return HackathonReadinessResponse(
         readiness_score='10/10 demo-ready' if svc['gateway'].enabled else '9/10 local-demo-ready; add a model gateway API key for live gateway proof',
-        verdict='TraceMemory demonstrates provider-agnostic failure recovery, PostgreSQL checkpoints, MCP-style tool tracing, Context Health, and a one-click judge demo.',
+        verdict='SupportMemory demonstrates provider-agnostic failure recovery, PostgreSQL checkpoints, MCP-style tool tracing, Context Health, and a one-click judge demo.',
         requirements=requirements,
         demo=demo,
         mcp_tool=mcp_response,

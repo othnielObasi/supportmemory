@@ -20,8 +20,8 @@
 .message.user .bubble{padding:11px 15px;border-radius:18px 5px 18px 18px;background:#eef1ee;color:#26322a;font-size:13px}
 .message-avatar{border-radius:50%}
 .message.user .message-avatar{display:none}
-.composer{width:100%;padding-inline:clamp(24px,7vw,96px);border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),#fff 18%)}
-.composer>div,.composer>p{width:min(100%,780px);margin-inline:auto}
+.composer{width:100%;display:flex;justify-content:center;padding-inline:clamp(18px,5vw,72px);border-top:0;background:linear-gradient(to bottom,rgba(255,255,255,0),#fff 18%)}
+.composer-inner{width:min(100%,760px);margin-inline:auto}
 .composer-box{min-height:58px;border-radius:18px;padding:9px 10px 9px 14px;box-shadow:0 8px 28px rgba(23,32,27,.09)}
 .composer textarea{font-size:14px}
 .send-button,.stop-button{min-width:42px;width:42px;height:42px;border-radius:50%;padding:0;font-size:0}
@@ -30,7 +30,7 @@
 .conversation-empty .message-stack{margin:0 auto}
 .conversation-empty .empty-state{margin:0 auto;padding-bottom:14px}
 .conversation-empty .empty-state h2{font-size:24px;letter-spacing:-.035em}
-.conversation-empty .composer{margin-bottom:auto;padding-top:0;padding-bottom:28px;background:white}
+.conversation-empty .composer{width:100%;max-width:none;align-self:stretch;margin:0 auto auto;padding-top:0;padding-bottom:28px;background:white}
 .conversation-empty .composer-tabs{margin-bottom:8px}
 @media(max-width:760px){.thread,.composer{padding-inline:12px}.message.user{max-width:90%}.conversation-empty .empty-state h2{font-size:20px}}
 
@@ -45,7 +45,7 @@
 .thread{padding-top:34px;padding-bottom:18px}.message-stack{gap:28px}.message-content header{margin-bottom:8px}.message-content header strong{font-size:12px}.message-content time{font-size:10px}.message-avatar{width:28px;height:28px;flex-basis:28px}.message.assistant .message-avatar{background:#1b6b4b}.message.assistant .message-content{max-width:720px}.message.user .message-content{flex:initial}.message.user .message-content header{display:none}
 .composer{position:relative;padding-top:18px;padding-bottom:12px}.composer-tabs{padding-inline:4px}.composer-tabs button{font-size:10px}.composer-box{border-color:#d4d8d3;background:#fff}.composer-hint{text-align:center;font-size:9px}
 .evidence-panel{position:fixed;top:56px;right:0;bottom:0;z-index:70;width:min(380px,92vw);border-left:1px solid var(--line);box-shadow:-18px 0 48px rgba(23,32,27,.11);animation:drawer-in .18s ease-out}.evidence-panel>header{min-height:64px}
-.conversation-empty .thread{padding-top:0}.conversation-empty .empty-state{width:min(100%,620px)}.conversation-empty .empty-mark{width:48px;height:48px;border-radius:50%}.conversation-empty .composer{width:100%;max-width:900px}
+.conversation-empty .thread{padding-top:0}.conversation-empty .empty-state{width:min(100%,620px)}.conversation-empty .empty-mark{width:48px;height:48px;border-radius:50%}
 @keyframes drawer-in{from{transform:translateX(18px);opacity:0}to{transform:translateX(0);opacity:1}}
 @media(max-width:1180px){.workspace{grid-template-columns:250px minmax(0,1fr)}.topbar{grid-template-columns:250px minmax(0,1fr) auto auto}.evidence-panel{top:56px}}
 @media(max-width:760px){.topbar{height:56px;grid-template-columns:1fr auto auto}.inbox{inset:56px auto 0 0}.conversation-head{min-height:56px}.evidence-panel{top:56px}.thread{padding-top:24px}.head-actions .secondary-button{display:none}}

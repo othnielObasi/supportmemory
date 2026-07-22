@@ -266,7 +266,7 @@ Full interactive docs: http://localhost:8000/docs
 
 ```text
 supportmemory/
-├── apps/console/                 # Main UI (:3000) → hackathon-ui.html
+├── apps/console/                 # Production React support workspace (:3000)
 ├── apps/ticket-agent-demo/       # Reference support chat UI
 ├── services/api/                 # FastAPI runtime
 ├── services/mock-tools/          # Keyless MCP-style ticket/policy tools

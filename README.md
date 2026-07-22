@@ -99,7 +99,7 @@ Clear system view of how the frontend, SupportMemory backend, PostgreSQL, and **
 ```mermaid
 flowchart TB
   subgraph Client["Frontend"]
-    UI["Hackathon Console UI<br/>:3000"]
+    UI["SupportMemory Product UI<br/>:3000"]
     AgentDemo["Ticket Agent Demo<br/>optional"]
   end
 
@@ -277,7 +277,7 @@ supportmemory/
 ├── infra/alibaba/                # Primary cloud deploy (ECS + OSS)
 ├── docs/                         # Architecture, judging, API notes
 ├── scripts/e2e_supportmemory.py  # Offline SupportMemory E2E
-├── HACKATHON_UI.html             # UI source of truth
+├── PRODUCT_SITE.html             # Product-site reference artifact
 ├── docker-compose.yml
 ├── .env.example
 └── LICENSE

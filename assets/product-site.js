@@ -1,4 +1,4 @@
-/* SupportMemory dashboard API wiring — loaded by HACKATHON_UI.html */
+/* SupportMemory product-site API wiring. */
 (function () {
   const STEPS = ["Request", "Plan", "Route", "Checkpoint", "Tool", "Evidence", "Fallback", "Memory", "Answer"];
   const AGENT_ID = "ticket-investigation-agent";

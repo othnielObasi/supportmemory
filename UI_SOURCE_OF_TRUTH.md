@@ -24,8 +24,8 @@ Production console source:
 - `apps/console/src/api.ts` — typed, timeout-aware API client
 - `apps/console/src/styles.css` — responsive production design system
 
-`HACKATHON_UI.html` and its synced copies are retained only as archived marketing/demo
-artifacts. The production console no longer redirects to or executes them.
+The established product and marketing pages are served from `apps/console/index.html`.
+The operator workspace is a separate production entry point at `/workspace.html`.
 
 Hero asset:
 
@@ -67,4 +67,7 @@ Typed client: `apps/console/src/api.ts`.
 
 Fails quietly to sample content if the API is unreachable. Override with `?api=https://your-host:8000`.
 
-Console on port 3000 redirects to `/hackathon-ui.html`.
+The public product site is served at `/`. Authenticated application surfaces are separate entries:
+
+- `/workspace.html` — investigation workspace
+- `/knowledge.html` — private knowledge operations

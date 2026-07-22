@@ -1,6 +1,6 @@
 import React, { FormEvent, KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { api, ApiError, ApiState, ConversationMessage, GraphPath, KbHit, RetrievedRule, RunEvent, TaskRunResponse } from "./api";
+import { api, ApiError, ApiState, ConversationMessage, GraphPath, KbHit, RetrievedRule, RunEvent, TaskRunResponse, setApiTenant } from "./api";
 import "./styles.css";
 
 type Status = "open" | "pending" | "resolved" | "escalated";
@@ -63,6 +63,7 @@ function App() {
   const [items, setItems] = useState<Investigation[]>([]);
   const [activeId, setActiveId] = useState("");
   const [apiState, setApiState] = useState<ApiState>("checking");
+  const [tenantLabel, setTenantLabel] = useState({ organisation: tenant.organisationId, workspace: tenant.workspaceId, role: "operator" });
   const [apiLabel, setApiLabel] = useState("Connecting");
   const [query, setQuery] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -115,6 +116,12 @@ function App() {
 
   async function bootstrap() {
     try {
+      const context = await api.enterpriseContext();
+      setApiTenant(context.principal);
+      tenant.organisationId = context.principal.organisation_id;
+      tenant.workspaceId = context.principal.workspace_id;
+      tenant.projectId = context.principal.project_id;
+      setTenantLabel({ organisation: context.principal.organisation_id, workspace: context.principal.workspace_id, role: context.role });
       const status = await api.status();
       setApiState(status.connected ? "online" : "degraded");
       setApiLabel(status.connected ? `${status.environment} · connected` : "Database unavailable");
@@ -307,7 +314,7 @@ function App() {
           <div className="brand-mark" aria-hidden="true">S</div>
           <div><strong>SupportMemory</strong><span>Agent workspace</span></div>
         </div>
-        <div className="workspace-switcher"><span className="eyebrow">Workspace</span><strong>{tenant.workspaceId.replace("wrk_", "")}</strong></div>
+        <div className="app-navigation"><div className="workspace-switcher" title={`Organisation ${tenantLabel.organisation} · ${tenantLabel.role}`}><span className="eyebrow">Workspace</span><strong>{tenantLabel.workspace.replace("wrk_", "")}</strong></div><a href="/knowledge.html">Knowledge</a></div>
         <div className={`connection ${apiState}`} role="status"><i />{apiLabel}</div>
         <div className="avatar-button" aria-label="Signed in operator">OO</div>
       </header>
@@ -333,11 +340,11 @@ function App() {
             </header>
             <RunStrip events={active.events} busy={busy} checkpoint={active.checkpointId} />
             {error && <div className="error-banner" role="alert"><div><strong>Action needed</strong><span>{error}</span></div><button onClick={() => setError(null)} aria-label="Dismiss error">×</button></div>}
-            <div className="thread" ref={threadRef} aria-live="polite">
+            <div className="thread" ref={threadRef} aria-live="polite"><div className="message-stack">
               {!active.messages.length && <Empty title="Start with the customer’s question" body="SupportMemory will retrieve customer context, policies, learned rules, and related graph evidence before answering." />}
               {active.messages.map((message) => <MessageBubble key={message.message_id} message={message} onEvidence={() => { setEvidenceTab("memory"); setEvidenceOpen(true); }} />)}
               {busy && <Thinking />}
-            </div>
+            </div></div>
             <form className="composer" onSubmit={send}>
               <div className="composer-tabs" role="tablist" aria-label="Message type"><button type="button" role="tab" aria-selected={composerMode === "reply"} className={composerMode === "reply" ? "active" : ""} onClick={() => setComposerMode("reply")}>Customer reply</button><button type="button" role="tab" aria-selected={composerMode === "note"} className={composerMode === "note" ? "active" : ""} onClick={() => setComposerMode("note")}>Internal note</button><span>{draft.length}/4000</span></div>
               <div className="composer-box"><textarea value={draft} maxLength={4000} onChange={(e) => setDraft(e.target.value)} onKeyDown={composerKeyDown} placeholder={composerMode === "reply" ? "Ask SupportMemory or reply to the customer…" : "Add a private note for your team…"} aria-label={composerMode === "reply" ? "Customer reply" : "Internal note"} rows={2} /><button type={busy ? "button" : "submit"} className={busy ? "stop-button" : "send-button"} disabled={!busy && !draft.trim()} onClick={busy ? () => abortRef.current?.abort() : undefined}>{busy ? "Stop" : "Send"}</button></div>

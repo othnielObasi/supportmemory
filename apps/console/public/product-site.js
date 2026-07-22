@@ -1,4 +1,4 @@
-/* SupportMemory dashboard API wiring — loaded by HACKATHON_UI.html */
+/* SupportMemory product-site API wiring. */
 (function () {
   const STEPS = ["Request", "Plan", "Route", "Checkpoint", "Tool", "Evidence", "Fallback", "Memory", "Answer"];
   const AGENT_ID = "ticket-investigation-agent";
@@ -154,6 +154,7 @@
 
   function setBusy(on) {
     document.getElementById("dash")?.classList.toggle("busy", !!on);
+    document.getElementById("page-knowledge")?.classList.toggle("kb-busy", !!on);
   }
 
   function setApiPill(ok, label) {
@@ -169,6 +170,14 @@
   }
 
   window.showPage = function showPage(id) {
+    if (id === "dashboard") {
+      window.location.href = "/workspace.html";
+      return;
+    }
+    if (id === "knowledge") {
+      window.location.href = "/knowledge.html";
+      return;
+    }
     document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
     const page = document.getElementById("page-" + id);
     if (page) page.classList.add("active");
@@ -242,7 +251,7 @@
     const box = document.getElementById(targetId);
     if (!box) return;
     if (!hits || !hits.length) {
-      box.innerHTML = "";
+      box.innerHTML = targetId === "kb-page-hits" ? '<div class="kb-empty">No relevant passages found. Try a broader query.</div>' : "";
       return;
     }
     box.innerHTML = hits
@@ -763,6 +772,8 @@
     try {
       const res = await apiPost("/api/kb/search", { query: q, agent_id: AGENT_ID, top_k: 5 });
       renderKbHits(res.hits || [], "kb-page-hits");
+      const results = document.getElementById("kb-search-results");
+      if (results) results.hidden = false;
       setApiPill(true, "API live");
       toast(`${(res.hits || []).length} KB hits`);
     } catch (e) {
@@ -771,6 +782,13 @@
     } finally {
       setBusy(false);
     }
+  };
+
+  window.clearKbSearch = function () {
+    const results = document.getElementById("kb-search-results");
+    const query = document.getElementById("kb-query");
+    if (results) results.hidden = true;
+    if (query) query.value = "";
   };
 
   window.ingestKbText = async function () {
@@ -820,20 +838,40 @@
   };
 
   async function refreshKbDocs() {
+    const root = document.getElementById("kb-docs");
+    if (root) root.innerHTML = '<div class="kb-loading">Loading indexed documents…</div>';
     try {
       const docs = await apiGet("/api/kb/documents");
-      const ul = document.getElementById("kb-docs");
-      if (!ul) return;
+      if (!root) return;
+      const chunks = docs.reduce((sum, doc) => sum + Number(doc.chunk_count || 0), 0);
+      const types = new Set(docs.map((doc) => doc.source_type || "unknown")).size;
+      const setText = (id, value) => { const node = document.getElementById(id); if (node) node.textContent = String(value); };
+      setText("kb-stat-docs", docs.length);
+      setText("kb-stat-chunks", chunks);
+      setText("kb-stat-types", types);
+      setText("kb-api-state", "Connected · index ready");
       if (!docs.length) {
-        ul.innerHTML = "<li>No KB documents yet — Seed demo KB</li>";
+        root.innerHTML = '<div class="kb-empty"><strong>No knowledge sources yet</strong><br>Upload a PDF or ingest verified policy text to get started.</div>';
         return;
       }
-      ul.innerHTML = docs
-        .slice(0, 12)
-        .map((d) => `<li><strong style="color:var(--ink)">${esc(d.title)}</strong> · ${d.chunk_count} chunks</li>`)
+      root.innerHTML = docs
+        .map((doc) => {
+          const created = doc.created_at ? new Date(doc.created_at).toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" }) : "Unknown";
+          return `<article class="kb-document-row">
+            <div class="kb-document-main"><strong>${esc(doc.title || "Untitled document")}</strong><small>${esc(doc.document_id || "No document ID")}</small></div>
+            <span class="kb-type">${esc(doc.source_type || "text")}</span>
+            <span class="kb-chunks">${Number(doc.chunk_count || 0)}</span>
+            <span>${esc(created)}</span>
+          </article>`;
+        })
         .join("");
-    } catch (_) {}
+    } catch (_) {
+      if (root) root.innerHTML = '<div class="kb-error"><strong>Knowledge library unavailable</strong><br>Check the API connection and retry.</div>';
+      const state = document.getElementById("kb-api-state");
+      if (state) state.textContent = "Connection unavailable";
+    }
   }
+  window.refreshKbDocs = refreshKbDocs;
 
   async function pingApi() {
     try {

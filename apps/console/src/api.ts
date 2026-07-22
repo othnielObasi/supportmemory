@@ -7,6 +7,20 @@ export interface SystemStatus {
   model_routing?: Record<string, string>;
 }
 
+export interface TenantContext {
+  organisation_id: string;
+  workspace_id: string;
+  project_id: string;
+  environment_id: string;
+}
+
+export interface EnterpriseContext {
+  principal: TenantContext;
+  role: string;
+  scopes: string[];
+  auth_required: boolean;
+}
+
 export interface RetrievedRule {
   rule_id: string;
   score: number;
@@ -90,6 +104,20 @@ export class ApiError extends Error {
 
 const queryBase = new URLSearchParams(window.location.search).get("api");
 const baseUrl = (queryBase || import.meta.env.VITE_API_BASE_URL || "http://localhost:8000").replace(/\/$/, "");
+let tenantContext: TenantContext = {
+  organisation_id: localStorage.getItem("sm.organisation") || "org_default",
+  workspace_id: localStorage.getItem("sm.workspace") || "wrk_default",
+  project_id: localStorage.getItem("sm.project") || "prj_default",
+  environment_id: localStorage.getItem("sm.environment") || "dev",
+};
+
+export function setApiTenant(context: TenantContext) {
+  tenantContext = context;
+  localStorage.setItem("sm.organisation", context.organisation_id);
+  localStorage.setItem("sm.workspace", context.workspace_id);
+  localStorage.setItem("sm.project", context.project_id);
+  localStorage.setItem("sm.environment", context.environment_id);
+}
 
 async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 45_000): Promise<T> {
   const controller = new AbortController();
@@ -103,6 +131,10 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 45_0
         Accept: "application/json",
         ...(init.body instanceof FormData ? {} : { "Content-Type": "application/json" }),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        "X-Organisation-Id": tenantContext.organisation_id,
+        "X-Workspace-Id": tenantContext.workspace_id,
+        "X-Project-Id": tenantContext.project_id,
+        "X-Environment-Id": tenantContext.environment_id,
         ...init.headers,
       },
     });
@@ -123,6 +155,7 @@ async function request<T>(path: string, init: RequestInit = {}, timeoutMs = 45_0
 
 export const api = {
   baseUrl,
+  enterpriseContext: () => request<EnterpriseContext>("/api/enterprise/context", {}, 8_000),
   status: () => request<SystemStatus>("/api/system/status", {}, 8_000),
   demoState: () => request<Record<string, unknown>>("/api/demo/state"),
   getUser: (userId: string, organisationId: string, workspaceId: string) =>

@@ -110,6 +110,8 @@ from app.services.trace_service import TraceService
 from app.services.knowledge_graph_service import KnowledgeGraphService
 from app.context_health.schemas import ContextBuildRequest, ContextCandidate
 from app.context_health.service import ContextHealthService
+from app.enterprise_api import principal_dependency
+from app.security import EnterprisePrincipal, create_audit_log
 
 router = APIRouter()
 
@@ -1362,7 +1364,9 @@ async def retrieve_lessons(payload: RetrieveLessonsRequest, svc=Depends(get_serv
 
 
 @router.post('/kb/ingest', response_model=KbIngestResponse)
-async def ingest_kb_document(payload: KbIngestRequest, svc=Depends(get_services)):
+async def ingest_kb_document(payload: KbIngestRequest, principal: EnterprisePrincipal = Depends(principal_dependency), svc=Depends(get_services)):
+    principal.require(['memory:approve'])
+    payload = payload.model_copy(update=principal.context_dict())
     try:
         result = await svc['kb'].ingest(payload)
         policy = await svc['graph'].upsert_node(
@@ -1385,6 +1389,7 @@ async def ingest_kb_document(payload: KbIngestRequest, svc=Depends(get_services)
                 project_id=payload.project_id, environment_id=payload.environment_id,
                 evidence_ids=[chunk.chunk_id],
             )
+        await create_audit_log(svc['store'], action='kb.document.ingest', principal=principal, resource_type='kb_document', resource_id=result.document_id, metadata={'source_type': payload.source_type, 'chunk_count': result.chunk_count})
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1395,13 +1400,12 @@ async def ingest_kb_pdf(
     file: UploadFile = File(...),
     title: str = Form(default=''),
     agent_id: str = Form(default='ticket-investigation-agent'),
-    organisation_id: str = Form(default='org_default'),
-    workspace_id: str = Form(default='wrk_default'),
-    project_id: str = Form(default='prj_default'),
-    environment_id: str = Form(default='dev'),
+    principal: EnterprisePrincipal = Depends(principal_dependency),
     svc=Depends(get_services),
 ):
     """Ingest a real PDF into KB memory (text extraction via pypdf)."""
+    principal.require(['memory:approve'])
+    tenant = principal.context_dict()
     filename = file.filename or 'document.pdf'
     if not filename.lower().endswith('.pdf'):
         raise HTTPException(status_code=400, detail='Only .pdf uploads are supported')
@@ -1415,30 +1419,31 @@ async def ingest_kb_pdf(
             source_system='pdf_upload',
             tags=['pdf', 'supportmemory'],
             agent_id=agent_id,
-            organisation_id=organisation_id,
-            workspace_id=workspace_id,
-            project_id=project_id,
-            environment_id=environment_id,
+            organisation_id=tenant['organisation_id'],
+            workspace_id=tenant['workspace_id'],
+            project_id=tenant['project_id'],
+            environment_id=tenant['environment_id'],
         )
         policy = await svc['graph'].upsert_node(
             node_type='policy', canonical_key=result.document_id,
-            organisation_id=organisation_id, workspace_id=workspace_id,
-            project_id=project_id, environment_id=environment_id,
+            organisation_id=tenant['organisation_id'], workspace_id=tenant['workspace_id'],
+            project_id=tenant['project_id'], environment_id=tenant['environment_id'],
             properties={'title': result.title, 'source_type': 'pdf'},
             source_type='kb_document', source_id=result.document_id,
         )
         for chunk in result.chunks:
             chunk_node = await svc['graph'].upsert_node(
                 node_type='kb_chunk', canonical_key=chunk.chunk_id,
-                organisation_id=organisation_id, workspace_id=workspace_id,
-                project_id=project_id, environment_id=environment_id,
+                organisation_id=tenant['organisation_id'], workspace_id=tenant['workspace_id'],
+                project_id=tenant['project_id'], environment_id=tenant['environment_id'],
                 source_type='kb_chunk', source_id=chunk.chunk_id,
             )
             await svc['graph'].link(
                 source_node_id=policy.id, target_node_id=chunk_node.id, relation='SUPPORTED_BY',
-                organisation_id=organisation_id, workspace_id=workspace_id,
-                project_id=project_id, environment_id=environment_id, evidence_ids=[chunk.chunk_id],
+                organisation_id=tenant['organisation_id'], workspace_id=tenant['workspace_id'],
+                project_id=tenant['project_id'], environment_id=tenant['environment_id'], evidence_ids=[chunk.chunk_id],
             )
+        await create_audit_log(svc['store'], action='kb.document.ingest_pdf', principal=principal, resource_type='kb_document', resource_id=result.document_id, metadata={'filename': filename, 'chunk_count': result.chunk_count})
         return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -1447,13 +1452,15 @@ async def ingest_kb_pdf(
 
 
 @router.get('/kb/documents', response_model=list[KbDocumentSummary])
-async def list_kb_documents(organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
-    return await svc['kb'].list_documents(limit=50, organisation_id=organisation_id, workspace_id=workspace_id)
+async def list_kb_documents(principal: EnterprisePrincipal = Depends(principal_dependency), svc=Depends(get_services)):
+    principal.require(['memory:read'])
+    return await svc['kb'].list_documents(limit=50, organisation_id=principal.organisation_id, workspace_id=principal.workspace_id)
 
 
 @router.post('/kb/search', response_model=KbSearchResponse)
-async def search_kb(payload: KbSearchRequest, svc=Depends(get_services)):
-    hits = await svc['kb'].search(payload.query, top_k=payload.top_k, agent_id=payload.agent_id, organisation_id=payload.organisation_id, workspace_id=payload.workspace_id)
+async def search_kb(payload: KbSearchRequest, principal: EnterprisePrincipal = Depends(principal_dependency), svc=Depends(get_services)):
+    principal.require(['memory:read'])
+    hits = await svc['kb'].search(payload.query, top_k=payload.top_k, agent_id=payload.agent_id, organisation_id=principal.organisation_id, workspace_id=principal.workspace_id)
     context_prefix = svc['retrieval'].context_builder.build([], kb_hits=hits)
     return KbSearchResponse(hits=hits, context_prefix=context_prefix)
 

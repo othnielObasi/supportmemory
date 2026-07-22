@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from app.context_health.schemas import (
     ContextBuildRequest,
     ContextBuildResponse,
@@ -145,5 +147,18 @@ class ContextHealthService:
         return text[:max_chars].rstrip() + "\n[compressed by TraceMemory Context Health]"
 
     def _redact(self, text: str) -> str:
-        redacted = text.replace("api_key", "[redacted_key]").replace("password", "[redacted_password]")
+        redacted = text
+        patterns = [
+            (r"(?i)\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b", "[redacted_email]"),
+            (r"(?<!\w)(?:\+?\d[\d\s().-]{7,}\d)(?!\w)", "[redacted_phone]"),
+            (r"\b\d{3}-\d{2}-\d{4}\b", "[redacted_government_id]"),
+            (r"\b(?:\d[ -]*?){13,19}\b", "[redacted_payment_card]"),
+            (r"(?i)\b(?:api[_-]?key|password|secret|token)\s*[:=]\s*[^\s,;]+", "[redacted_credential]"),
+        ]
+        for pattern, replacement in patterns:
+            redacted = re.sub(pattern, replacement, redacted)
         return redacted
+
+    def sanitize_text(self, text: str) -> str:
+        """Public deterministic PII/credential redaction used before model calls."""
+        return self._redact(text)

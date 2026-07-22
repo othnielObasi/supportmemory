@@ -1,12 +1,15 @@
 from functools import lru_cache
 from typing import List
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file='.env', env_file_encoding='utf-8', extra='ignore', populate_by_name=True)
+    model_config = SettingsConfigDict(
+        env_file='.env', env_file_encoding='utf-8', extra='ignore',
+        populate_by_name=True, validate_by_name=True,
+    )
 
     app_name: str = Field(default='SupportMemory', alias='APP_NAME')
     environment: str = Field(default='development', alias='ENVIRONMENT')
@@ -27,8 +30,8 @@ class Settings(BaseSettings):
     runtime_governor_block_unknown_tools: bool = Field(default=False, alias='RUNTIME_GOVERNOR_BLOCK_UNKNOWN_TOOLS')
     runtime_governor_tool_allowlist: str = Field(default='', alias='RUNTIME_GOVERNOR_TOOL_ALLOWLIST')
     # auto = Qwen embeddings when QWEN_API_KEY set, else OpenAI, else hash
-    embedding_provider: str = Field(default='auto', alias='EMBEDDING_PROVIDER')
-    embedding_dimensions: int = Field(default=384, alias='EMBEDDING_DIMENSIONS')
+    embedding_provider: str = Field(default='auto', validation_alias=AliasChoices('EMBEDDING_PROVIDER', 'embedding_provider'))
+    embedding_dimensions: int = Field(default=384, validation_alias=AliasChoices('EMBEDDING_DIMENSIONS', 'embedding_dimensions'))
     qwen_embedding_model: str = Field(default='text-embedding-v3', alias='QWEN_EMBEDDING_MODEL')
     openai_api_key: str | None = Field(default=None, alias='OPENAI_API_KEY')
     openai_embedding_model: str = Field(default='text-embedding-3-small', alias='OPENAI_EMBEDDING_MODEL')
@@ -88,10 +91,27 @@ class Settings(BaseSettings):
     default_model_gateway: str = Field(default='openai', alias='DEFAULT_MODEL_GATEWAY')
     audit_log_retention_days: int = Field(default=365, alias='AUDIT_LOG_RETENTION_DAYS')
     run_retention_days: int = Field(default=365, alias='RUN_RETENTION_DAYS')
+    memory_auto_learn: bool = Field(default=True, alias='MEMORY_AUTO_LEARN')
+    memory_min_auto_confidence: float = Field(default=0.7, alias='MEMORY_MIN_AUTO_CONFIDENCE')
+    memory_default_retention_days: int = Field(default=365, alias='MEMORY_DEFAULT_RETENTION_DAYS')
+    knowledge_graph_enabled: bool = Field(default=True, alias='KNOWLEDGE_GRAPH_ENABLED')
+    knowledge_graph_max_depth: int = Field(default=2, alias='KNOWLEDGE_GRAPH_MAX_DEPTH')
+    knowledge_graph_max_paths: int = Field(default=12, alias='KNOWLEDGE_GRAPH_MAX_PATHS')
     enable_open_telemetry: bool = Field(default=False, alias='ENABLE_OPEN_TELEMETRY')
     otel_service_name: str = Field(default='tracememory-api', alias='OTEL_SERVICE_NAME')
     worker_poll_interval_seconds: int = Field(default=5, alias='WORKER_POLL_INTERVAL_SECONDS')
     worker_lease_seconds: int = Field(default=300, alias='WORKER_LEASE_SECONDS')
+
+    def __init__(self, **values):
+        # Accept both Python field names and environment-style aliases. Several
+        # SDK/tests construct Settings directly while deployment uses env names.
+        normalised = dict(values)
+        for name, field in type(self).model_fields.items():
+            alias = field.alias
+            target = alias or name.upper()
+            if name in normalised and target not in normalised:
+                normalised[target] = normalised.pop(name)
+        super().__init__(**normalised)
 
     @property
     def cors_origins(self) -> List[str]:

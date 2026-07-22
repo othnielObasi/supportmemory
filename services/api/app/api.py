@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
@@ -25,6 +26,12 @@ from app.models.schemas import (
     MCPGatewayToolResponse,
     HackathonReadinessResponse,
     GovernanceDecision,
+    GraphEdge,
+    GraphEdgeRequest,
+    GraphNode,
+    GraphNodeRequest,
+    GraphPath,
+    GraphTraverseRequest,
     IdempotencyRecord,
     LessonStatus,
     PartnerStatus,
@@ -100,6 +107,9 @@ from app.services.kb_ingest_service import KbIngestService
 from app.services.helpdesk_connector import fetch_helpdesk_mock
 from app.services.multimodal_service import MultimodalService
 from app.services.trace_service import TraceService
+from app.services.knowledge_graph_service import KnowledgeGraphService
+from app.context_health.schemas import ContextBuildRequest, ContextCandidate
+from app.context_health.service import ContextHealthService
 
 router = APIRouter()
 
@@ -133,6 +143,7 @@ def get_services(store: PostgresStore = Depends(get_store), settings: Settings =
     language_prefs = LanguagePreferenceService(store)
     user_prefs = UserPreferenceService(store, language_prefs=language_prefs)
     conversations = ConversationHistoryService(store)
+    graph = KnowledgeGraphService(store)
     return {
         'trace': TraceService(store),
         'reflection': ReflectionService(store, gateway),
@@ -142,7 +153,9 @@ def get_services(store: PostgresStore = Depends(get_store), settings: Settings =
         'curation': CurationService(store, embeddings, settings),
         'kb': kb,
         'multimodal': multimodal,
-        'retrieval': RetrievalService(store, embeddings, settings, kb=kb),
+        'retrieval': RetrievalService(store, embeddings, settings, kb=kb, graph=graph if settings.knowledge_graph_enabled else None),
+        'graph': graph,
+        'context_health': ContextHealthService(),
         'governance': governance,
         'agent': AgentRunner(governance),
         'fireworks': FireworksService(settings),
@@ -174,7 +187,7 @@ def build_run_events(trace, retrieved_rules=None, simulate_restart=False, task_m
         completed_codes.append('checkpoint_restored')
     if task_modified:
         completed_codes.append('task_modified')
-    if retrieved_rules or trace.metadata.get('dataset_type') == 'compliance_tickets':
+    if retrieved_rules or trace.metadata.get('learned_rule_id') or trace.metadata.get('dataset_type') == 'compliance_tickets':
         completed_codes.append('memory_created_or_retrieved')
     if trace.status.value in {'success', 'failed', 'blocked', 'partial', 'recovered'}:
         completed_codes.append('final_answer')
@@ -192,7 +205,7 @@ def build_run_events(trace, retrieved_rules=None, simulate_restart=False, task_m
 async def maybe_get_idempotent_response(payload: RunTaskRequest, store: PostgresStore) -> TaskRunResponse | None:
     if not payload.idempotency_key:
         return None
-    existing = await store.find_one_by('agent_runs', {'idempotency_key': payload.idempotency_key}, sort=[('created_at', DESCENDING)])
+    existing = await store.find_one_by('agent_runs', {'idempotency_key': payload.idempotency_key, 'organisation_id': payload.organisation_id, 'workspace_id': payload.workspace_id}, sort=[('created_at', DESCENDING)])
     if not existing:
         return None
     trace_doc = await store.find_one('execution_traces', existing['trace_id'])
@@ -238,6 +251,10 @@ async def persist_tool_traces_from_execution(store: PostgresStore, trace, checkp
     for call in trace.tool_calls:
         output = call.output or {}
         trace_doc = ToolTrace(
+            organisation_id=trace.organisation_id,
+            workspace_id=trace.workspace_id,
+            project_id=trace.project_id,
+            environment_id=trace.environment_id,
             task_id=trace.task_id,
             run_id=run_id,
             trace_id=trace.id,
@@ -285,6 +302,10 @@ async def persist_run_context(payload: RunTaskRequest, trace, run_events, store:
     }
     checkpoint = TaskCheckpoint(
         _id=new_id('chk'),
+        organisation_id=payload.organisation_id,
+        workspace_id=payload.workspace_id,
+        project_id=payload.project_id,
+        environment_id=payload.environment_id,
         task_id=trace.task_id,
         trace_id=trace.id,
         agent_id=trace.agent_id,
@@ -335,6 +356,10 @@ async def persist_run_context(payload: RunTaskRequest, trace, run_events, store:
         'parent_checkpoint_id': payload.parent_checkpoint_id,
         'idempotency_key': payload.idempotency_key,
         'created_at': trace.created_at,
+        'organisation_id': payload.organisation_id,
+        'workspace_id': payload.workspace_id,
+        'project_id': payload.project_id,
+        'environment_id': payload.environment_id,
     })
 
     if payload.idempotency_key:
@@ -346,6 +371,8 @@ async def persist_run_context(payload: RunTaskRequest, trace, run_events, store:
             task_id=trace.task_id,
             result_ref=f'agent_runs/{run_id}',
             result_hash=stable_hash({'trace_id': trace.id, 'checkpoint_id': checkpoint.id}),
+            organisation_id=payload.organisation_id,
+            workspace_id=payload.workspace_id,
         )
         await store.upsert_one('idempotency_keys', {'key': payload.idempotency_key}, record.model_dump(by_alias=True))
 
@@ -514,8 +541,8 @@ async def set_language_preference(payload: LanguagePreferenceRequest, svc=Depend
 
 
 @router.get('/preferences/user/{user_id}', response_model=UserPreferenceResponse)
-async def get_user_preference(user_id: str, svc=Depends(get_services)):
-    return UserPreferenceResponse(**(await svc['user_prefs'].get(user_id)))
+async def get_user_preference(user_id: str, organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
+    return UserPreferenceResponse(**(await svc['user_prefs'].get(user_id, organisation_id, workspace_id)))
 
 
 @router.put('/preferences/user', response_model=UserPreferenceResponse)
@@ -533,7 +560,37 @@ async def upsert_user_preference(payload: UserPreferenceRequest, svc=Depends(get
         extras=payload.extras,
         merge_extras=payload.merge_extras,
         source='explicit',
+        organisation_id=payload.organisation_id,
+        workspace_id=payload.workspace_id,
     )
+    customer = await svc['graph'].upsert_node(
+        node_type='customer', canonical_key=payload.user_id,
+        organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+        properties={'display_name': pref.get('display_name'), 'company': pref.get('company'), 'plan_tier': pref.get('plan_tier')},
+        source_type='user_preference', source_id=payload.user_id,
+    )
+    if pref.get('company'):
+        account = await svc['graph'].upsert_node(
+            node_type='account', canonical_key=pref['company'],
+            organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+            properties={'name': pref['company']}, source_type='user_preference', source_id=payload.user_id,
+        )
+        await svc['graph'].link(
+            source_node_id=customer.id, target_node_id=account.id, relation='BELONGS_TO',
+            organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+            evidence_ids=[payload.user_id],
+        )
+    if pref.get('contact_channel') not in {None, 'unknown'}:
+        channel = await svc['graph'].upsert_node(
+            node_type='contact_channel', canonical_key=pref['contact_channel'],
+            organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+            source_type='user_preference', source_id=payload.user_id,
+        )
+        await svc['graph'].link(
+            source_node_id=customer.id, target_node_id=channel.id, relation='PREFERS',
+            organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+            evidence_ids=[payload.user_id],
+        )
     return UserPreferenceResponse(**pref)
 
 
@@ -544,20 +601,22 @@ async def create_conversation(payload: ConversationCreateRequest, svc=Depends(ge
         title=payload.title,
         channel=payload.channel,
         metadata=payload.metadata,
+        organisation_id=payload.organisation_id,
+        workspace_id=payload.workspace_id,
     )
     return ConversationResponse(**conv)
 
 
 @router.get('/conversations/user/{user_id}', response_model=list[ConversationSummary])
-async def list_user_conversations(user_id: str, limit: int = 20, svc=Depends(get_services)):
-    rows = await svc['conversations'].list_for_user(user_id, limit=min(max(limit, 1), 50))
+async def list_user_conversations(user_id: str, limit: int = 20, organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
+    rows = await svc['conversations'].list_for_user(user_id, limit=min(max(limit, 1), 50), organisation_id=organisation_id, workspace_id=workspace_id)
     return [ConversationSummary(**row) for row in rows]
 
 
 @router.get('/conversations/{conversation_id}', response_model=ConversationResponse)
-async def get_conversation(conversation_id: str, svc=Depends(get_services)):
+async def get_conversation(conversation_id: str, organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
     try:
-        return ConversationResponse(**(await svc['conversations'].get(conversation_id)))
+        return ConversationResponse(**(await svc['conversations'].get(conversation_id, organisation_id, workspace_id)))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -566,6 +625,8 @@ async def get_conversation(conversation_id: str, svc=Depends(get_services)):
 async def append_conversation_message(
     conversation_id: str,
     payload: ConversationMessageRequest,
+    organisation_id: str = 'org_default',
+    workspace_id: str = 'wrk_default',
     svc=Depends(get_services),
 ):
     try:
@@ -574,10 +635,44 @@ async def append_conversation_message(
             role=payload.role,
             content=payload.content,
             metadata=payload.metadata,
+            organisation_id=organisation_id,
+            workspace_id=workspace_id,
         )
         return ConversationResponse(**conv)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete('/memory/users/{user_id}')
+async def delete_user_memory(user_id: str, organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
+    preferences = await svc['user_prefs'].delete(user_id, organisation_id, workspace_id)
+    conversations = await svc['conversations'].delete_for_user(user_id, organisation_id, workspace_id)
+    languages = await svc['store'].delete_many('user_language_preferences', {'user_id': user_id})
+    customer = await svc['store'].find_one_by('knowledge_graph_nodes', {'organisation_id': organisation_id, 'workspace_id': workspace_id, 'node_type': 'customer', 'canonical_key': user_id.lower()})
+    graph_nodes = await svc['graph'].delete_node(customer['_id'], organisation_id=organisation_id, workspace_id=workspace_id) if customer else 0
+    return {'user_id': user_id, 'deleted_preferences': preferences, 'deleted_conversations': conversations, 'deleted_language_preferences': languages, 'deleted_graph_nodes': graph_nodes}
+
+
+@router.post('/memory/expired/prune')
+async def prune_expired_memory(organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', dry_run: bool = True, svc=Depends(get_services)):
+    now = datetime.now(timezone.utc)
+    expired: list[dict[str, str]] = []
+    for collection in ('playbook_rules', 'kb_documents', 'kb_chunks', 'knowledge_graph_nodes', 'knowledge_graph_edges'):
+        docs = await svc['store'].find_many(collection, {'organisation_id': organisation_id, 'workspace_id': workspace_id}, limit=5000)
+        for doc in docs:
+            value = doc.get('expires_at') or doc.get('valid_until')
+            if not value:
+                continue
+            try:
+                deadline = datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+            except ValueError:
+                continue
+            if deadline <= now:
+                expired.append({'collection': collection, 'id': doc.get('_id') or doc.get('id')})
+    if not dry_run:
+        for item in expired:
+            await svc['store'].delete_many(item['collection'], {'_id': item['id']})
+    return {'dry_run': dry_run, 'expired_count': len(expired), 'records': expired}
 
 
 @router.post('/tasks/run', response_model=TaskRunResponse)
@@ -587,28 +682,44 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
         response.headers['X-Idempotent-Replay'] = 'true'
         return idempotent_response
 
+    resume_state = None
+    restored_task_id = None
+    if payload.parent_checkpoint_id:
+        checkpoint = await svc['store'].find_one('task_checkpoints', payload.parent_checkpoint_id)
+        if not checkpoint:
+            raise HTTPException(status_code=404, detail='Parent checkpoint not found')
+        if checkpoint.get('organisation_id', 'org_default') != payload.organisation_id or checkpoint.get('workspace_id', 'wrk_default') != payload.workspace_id:
+            raise HTTPException(status_code=404, detail='Parent checkpoint not found')
+        restore = await build_restore_response(checkpoint)
+        resume_state = restore.agent_state
+        restored_task_id = restore.task_id
+    planned_task_id = restored_task_id or new_id('task')
+
     retrieved_rules = []
     context_prefix = ''
     kb_hits = []
     if not payload.force_no_context:
         retrieved_rules, context_prefix, kb_hits = await svc['retrieval'].retrieve(
-            payload.task_description, payload.agent_id, top_k=3, include_kb=True, kb_top_k=3
+            payload.task_description, payload.agent_id, top_k=3, include_kb=True, kb_top_k=3,
+            task_id=planned_task_id, organisation_id=payload.organisation_id,
+            workspace_id=payload.workspace_id, project_id=payload.project_id,
+            environment_id=payload.environment_id, include_graph=True,
         )
 
     user_context_parts: list[str] = []
     active_conversation_id = payload.conversation_id
     if payload.user_id and not payload.force_no_context:
-        profile = await svc['user_prefs'].get(payload.user_id)
+        profile = await svc['user_prefs'].get(payload.user_id, payload.organisation_id, payload.workspace_id)
         profile_prefix = svc['user_prefs'].context_prefix(profile)
         if profile_prefix:
             user_context_parts.append(profile_prefix)
         try:
             if active_conversation_id:
-                conv = await svc['conversations'].get(active_conversation_id)
+                conv = await svc['conversations'].get(active_conversation_id, payload.organisation_id, payload.workspace_id)
                 if conv['user_id'] != payload.user_id:
                     raise HTTPException(status_code=403, detail='conversation does not belong to user_id')
             else:
-                conv = await svc['conversations'].get_or_create_default(payload.user_id)
+                conv = await svc['conversations'].get_or_create_default(payload.user_id, payload.organisation_id, payload.workspace_id)
                 active_conversation_id = conv['conversation_id']
             history_prefix = svc['conversations'].recent_context_prefix(conv)
             if history_prefix:
@@ -626,18 +737,30 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
             task_description=payload.task_description,
             agent_id=payload.agent_id,
             ingest_to_kb=payload.ingest_vision_to_kb,
+            organisation_id=payload.organisation_id,
+            workspace_id=payload.workspace_id,
+            project_id=payload.project_id,
+            environment_id=payload.environment_id,
         )
         context_prefix = "\n\n".join(part for part in [multimodal_prefix, context_prefix] if part)
 
-    resume_state = None
-    restored_task_id = None
-    if payload.parent_checkpoint_id:
-        checkpoint = await svc['store'].find_one('task_checkpoints', payload.parent_checkpoint_id)
-        if not checkpoint:
-            raise HTTPException(status_code=404, detail='Parent checkpoint not found')
-        restore = await build_restore_response(checkpoint)
-        resume_state = restore.agent_state
-        restored_task_id = restore.task_id
+    context_receipt_id = None
+    if context_prefix:
+        clean, receipt = svc['context_health'].build_context(ContextBuildRequest(
+            task=payload.task_description, agent_type=payload.agent_id,
+            organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+            project_id=payload.project_id, environment_id=payload.environment_id,
+            token_budget=8000,
+            candidate_context=[ContextCandidate(
+                source_ref=f'memory/{planned_task_id}', source_type='memory', title='Recalled SupportMemory context',
+                content=context_prefix, token_estimate=max(1, len(context_prefix) // 4),
+                relevance_score=90, freshness_score=90, trust_score=85,
+                sensitivity_level='medium', verification_status='source_verified',
+            )],
+        ))
+        context_prefix = clean.clean_context
+        context_receipt_id = receipt.receipt_id
+        await svc['store'].insert_one('context_receipts', {'_id': receipt.receipt_id, **receipt.model_dump()})
 
     plan_result = await svc['gateway'].chat(
         system='You prepare operational plans for durable, recoverable multimodal agent workflows. Return concise execution steps only.',
@@ -647,7 +770,11 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
         force_fail_primary=payload.simulate_model_failure,
     )
 
-    trace = await svc['agent'].run(payload.task_description, payload.agent_id, payload.dataset_type, context_prefix, resume_state=resume_state, task_id=restored_task_id)
+    trace = await svc['agent'].run(payload.task_description, payload.agent_id, payload.dataset_type, context_prefix, resume_state=resume_state, task_id=planned_task_id)
+    trace.organisation_id = payload.organisation_id
+    trace.workspace_id = payload.workspace_id
+    trace.project_id = payload.project_id
+    trace.environment_id = payload.environment_id
 
     # Internal investigation/recovery narrative — proof of the tool-trace/checkpoint/recovery
     # mechanics, kept as evidence rather than shown to the customer as the reply.
@@ -720,16 +847,59 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
                 assistant_content=trace.final_output or '',
                 conversation_id=active_conversation_id,
                 metadata={'task_id': trace.task_id, 'trace_id': trace.id},
+                organisation_id=payload.organisation_id,
+                workspace_id=payload.workspace_id,
             )
         except (KeyError, PermissionError):
             pass
 
     await svc['trace'].save(trace)
+    await svc['store'].update_one('retrieval_events', {'task_id': trace.task_id}, {'$set': {'trace_id': trace.id}})
+    await svc['graph'].extract_from_trace(
+        trace, organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+        project_id=payload.project_id, environment_id=payload.environment_id,
+    )
+    for retrieved in retrieved_rules:
+        counter = 'success_count' if trace.status.value in {'success', 'recovered'} else 'failure_count'
+        await svc['store'].update_one('playbook_rules', {'_id': retrieved.rule_id}, {'$inc': {counter: 1}})
 
-    if retrieved_rules or kb_hits:
-        await svc['retrieval'].retrieve(
-            payload.task_description, payload.agent_id, top_k=3, task_id=trace.task_id, include_kb=True, kb_top_k=3
+    reflection_id = None
+    learned_rule_id = None
+    if svc['settings'].memory_auto_learn:
+        reflection = await svc['reflection'].reflect(
+            trace, organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+            project_id=payload.project_id, environment_id=payload.environment_id,
         )
+        reflection_id = reflection.id
+        if reflection.confidence >= svc['settings'].memory_min_auto_confidence:
+            learned_rule, _, _ = await svc['curation'].curate(reflection)
+            if learned_rule:
+                learned_rule_id = learned_rule.id
+                trace_node = await svc['graph'].upsert_node(
+                    node_type='execution_trace', canonical_key=trace.id,
+                    organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+                    project_id=payload.project_id, environment_id=payload.environment_id,
+                    source_type='execution_trace', source_id=trace.id,
+                )
+                lesson_node = await svc['graph'].upsert_node(
+                    node_type='lesson', canonical_key=learned_rule.id,
+                    organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+                    project_id=payload.project_id, environment_id=payload.environment_id,
+                    properties={'rule_text': learned_rule.rule_text, 'category': learned_rule.category},
+                    source_type='playbook_rule', source_id=learned_rule.id,
+                    confidence=learned_rule.confidence,
+                )
+                await svc['graph'].link(
+                    source_node_id=lesson_node.id, target_node_id=trace_node.id, relation='LEARNED_FROM',
+                    organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+                    project_id=payload.project_id, environment_id=payload.environment_id,
+                    evidence_ids=[trace.id, reflection.id], confidence=learned_rule.confidence,
+                )
+    if reflection_id:
+        trace.metadata['reflection_id'] = reflection_id
+    if learned_rule_id:
+        trace.metadata['learned_rule_id'] = learned_rule_id
+    await svc['store'].update_one('execution_traces', {'_id': trace.id}, {'$set': {'metadata': trace.metadata}})
 
     task_modified = bool(payload.task_modification)
     checkpoint_restored = bool(payload.parent_checkpoint_id or payload.simulate_restart)
@@ -755,6 +925,9 @@ async def run_task(payload: RunTaskRequest, response: Response, svc=Depends(get_
         model_trace=trace.metadata.get('model_routing', {}),
         investigation_report=trace.metadata.get('investigation_report'),
         tool_investigation_summary=trace.metadata.get('tool_investigation_summary'),
+        reflection_id=reflection_id,
+        learned_rule_id=learned_rule_id,
+        context_receipt_id=context_receipt_id,
     )
 
 
@@ -1036,6 +1209,7 @@ async def save_developer_checkpoint(task_id: str, payload: SaveCheckpointRequest
 @router.post('/runs/{task_id}/memory/approve', response_model=ApproveMemoryResponse)
 async def approve_developer_memory(task_id: str, payload: ApproveMemoryRequest, svc=Depends(get_services)):
     memory_record_id = new_id('rule')
+    embedding = await svc['retrieval'].embeddings.embed(payload.rule)
     await svc['store'].insert_one('playbook_rules', {
         '_id': memory_record_id,
         'task_id': task_id,
@@ -1055,6 +1229,13 @@ async def approve_developer_memory(task_id: str, payload: ApproveMemoryRequest, 
         'signature': f'dev-approved:{memory_record_id}',
         'created_at': utc_now(),
         'updated_at': utc_now(),
+        'organisation_id': payload.organisation_id,
+        'workspace_id': payload.workspace_id,
+        'project_id': payload.project_id,
+        'environment_id': payload.environment_id,
+        'agent_id': payload.agent_id,
+        'expires_at': payload.expires_at,
+        'embedding': embedding,
     })
     await insert_run_event(svc['store'], task_id=task_id, trace_id=None, checkpoint_id=None, event=RunEvent(code='memory_created_or_retrieved', label='Memory', status=RunEventStatus.complete, description='Execution memory approved.'), payload={'memory_record_id': memory_record_id})
     return ApproveMemoryResponse(memory_record_id=memory_record_id, task_id=task_id)
@@ -1116,7 +1297,7 @@ async def reflect_trace(trace_id: str, svc=Depends(get_services)):
     trace = await svc['trace'].get(trace_id)
     if not trace:
         raise HTTPException(status_code=404, detail='Trace not found')
-    reflection = await svc['reflection'].reflect(trace)
+    reflection = await svc['reflection'].reflect(trace, organisation_id=trace.organisation_id, workspace_id=trace.workspace_id, project_id=trace.project_id, environment_id=trace.environment_id)
     return ReflectResponse(reflection_id=reflection.id, candidate_rule=reflection.candidate_rule, confidence=reflection.confidence, status=reflection.status, insight=reflection.insight, derivation=reflection.derivation)
 
 
@@ -1171,6 +1352,11 @@ async def retrieve_lessons(payload: RetrieveLessonsRequest, svc=Depends(get_serv
         payload.top_k,
         include_kb=payload.include_kb,
         kb_top_k=payload.kb_top_k,
+        organisation_id=payload.organisation_id,
+        workspace_id=payload.workspace_id,
+        project_id=payload.project_id,
+        environment_id=payload.environment_id,
+        include_graph=payload.include_graph,
     )
     return RetrieveLessonsResponse(retrieved_rules=rules, context_prefix=context_prefix, kb_hits=kb_hits)
 
@@ -1178,7 +1364,28 @@ async def retrieve_lessons(payload: RetrieveLessonsRequest, svc=Depends(get_serv
 @router.post('/kb/ingest', response_model=KbIngestResponse)
 async def ingest_kb_document(payload: KbIngestRequest, svc=Depends(get_services)):
     try:
-        return await svc['kb'].ingest(payload)
+        result = await svc['kb'].ingest(payload)
+        policy = await svc['graph'].upsert_node(
+            node_type='policy', canonical_key=result.document_id,
+            organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+            project_id=payload.project_id, environment_id=payload.environment_id,
+            properties={'title': payload.title, 'source_type': payload.source_type},
+            source_type='kb_document', source_id=result.document_id,
+        )
+        for chunk in result.chunks:
+            chunk_node = await svc['graph'].upsert_node(
+                node_type='kb_chunk', canonical_key=chunk.chunk_id,
+                organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+                project_id=payload.project_id, environment_id=payload.environment_id,
+                source_type='kb_chunk', source_id=chunk.chunk_id,
+            )
+            await svc['graph'].link(
+                source_node_id=policy.id, target_node_id=chunk_node.id, relation='SUPPORTED_BY',
+                organisation_id=payload.organisation_id, workspace_id=payload.workspace_id,
+                project_id=payload.project_id, environment_id=payload.environment_id,
+                evidence_ids=[chunk.chunk_id],
+            )
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -1188,6 +1395,10 @@ async def ingest_kb_pdf(
     file: UploadFile = File(...),
     title: str = Form(default=''),
     agent_id: str = Form(default='ticket-investigation-agent'),
+    organisation_id: str = Form(default='org_default'),
+    workspace_id: str = Form(default='wrk_default'),
+    project_id: str = Form(default='prj_default'),
+    environment_id: str = Form(default='dev'),
     svc=Depends(get_services),
 ):
     """Ingest a real PDF into KB memory (text extraction via pypdf)."""
@@ -1198,13 +1409,37 @@ async def ingest_kb_pdf(
     if not data:
         raise HTTPException(status_code=400, detail='Empty PDF upload')
     try:
-        return await svc['kb'].ingest_pdf(
+        result = await svc['kb'].ingest_pdf(
             source=data,
             title=title.strip() or filename.rsplit('.', 1)[0],
             source_system='pdf_upload',
             tags=['pdf', 'supportmemory'],
             agent_id=agent_id,
+            organisation_id=organisation_id,
+            workspace_id=workspace_id,
+            project_id=project_id,
+            environment_id=environment_id,
         )
+        policy = await svc['graph'].upsert_node(
+            node_type='policy', canonical_key=result.document_id,
+            organisation_id=organisation_id, workspace_id=workspace_id,
+            project_id=project_id, environment_id=environment_id,
+            properties={'title': result.title, 'source_type': 'pdf'},
+            source_type='kb_document', source_id=result.document_id,
+        )
+        for chunk in result.chunks:
+            chunk_node = await svc['graph'].upsert_node(
+                node_type='kb_chunk', canonical_key=chunk.chunk_id,
+                organisation_id=organisation_id, workspace_id=workspace_id,
+                project_id=project_id, environment_id=environment_id,
+                source_type='kb_chunk', source_id=chunk.chunk_id,
+            )
+            await svc['graph'].link(
+                source_node_id=policy.id, target_node_id=chunk_node.id, relation='SUPPORTED_BY',
+                organisation_id=organisation_id, workspace_id=workspace_id,
+                project_id=project_id, environment_id=environment_id, evidence_ids=[chunk.chunk_id],
+            )
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
@@ -1212,15 +1447,46 @@ async def ingest_kb_pdf(
 
 
 @router.get('/kb/documents', response_model=list[KbDocumentSummary])
-async def list_kb_documents(svc=Depends(get_services)):
-    return await svc['kb'].list_documents(limit=50)
+async def list_kb_documents(organisation_id: str = 'org_default', workspace_id: str = 'wrk_default', svc=Depends(get_services)):
+    return await svc['kb'].list_documents(limit=50, organisation_id=organisation_id, workspace_id=workspace_id)
 
 
 @router.post('/kb/search', response_model=KbSearchResponse)
 async def search_kb(payload: KbSearchRequest, svc=Depends(get_services)):
-    hits = await svc['kb'].search(payload.query, top_k=payload.top_k, agent_id=payload.agent_id)
+    hits = await svc['kb'].search(payload.query, top_k=payload.top_k, agent_id=payload.agent_id, organisation_id=payload.organisation_id, workspace_id=payload.workspace_id)
     context_prefix = svc['retrieval'].context_builder.build([], kb_hits=hits)
     return KbSearchResponse(hits=hits, context_prefix=context_prefix)
+
+
+@router.post('/graph/nodes', response_model=GraphNode)
+async def upsert_graph_node(payload: GraphNodeRequest, svc=Depends(get_services)):
+    try:
+        return await svc['graph'].upsert_node(**payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/graph/edges', response_model=GraphEdge)
+async def create_graph_edge(payload: GraphEdgeRequest, svc=Depends(get_services)):
+    try:
+        return await svc['graph'].link(**payload.model_dump())
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post('/graph/traverse', response_model=list[GraphPath])
+async def traverse_graph(payload: GraphTraverseRequest, svc=Depends(get_services)):
+    seeds = payload.seed_node_ids
+    if not seeds and payload.query:
+        resolved = await svc['graph'].resolve_seeds(payload.query, organisation_id=payload.organisation_id, workspace_id=payload.workspace_id)
+        seeds = [node.id for node in resolved]
+    return await svc['graph'].traverse(
+        seed_node_ids=seeds, organisation_id=payload.organisation_id,
+        workspace_id=payload.workspace_id, relations=payload.relations,
+        max_depth=payload.max_depth, max_paths=payload.max_paths,
+    )
 
 
 @router.post('/kb/seed-demo')

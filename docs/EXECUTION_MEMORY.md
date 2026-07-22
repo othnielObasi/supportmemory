@@ -26,6 +26,40 @@ Every claim below maps to real code under `services/api/app/services/`.
    applied on the NEXT run
 ```
 
+The normal `POST /api/tasks/run` path now closes this loop automatically. It reflects on
+the completed trace and curates the candidate when its confidence meets
+`MEMORY_MIN_AUTO_CONFIDENCE`. Set `MEMORY_AUTO_LEARN=false` when an installation requires
+fully manual approval through the reflection and curation endpoints.
+
+## Relationship memory
+
+SupportMemory also maintains a tenant-scoped property graph in PostgreSQL JSONB. Graph
+nodes cover customers, accounts, tickets, incidents, policies, KB chunks, execution traces,
+tool actions, and lessons. Edges retain evidence IDs, confidence, validity windows, and
+tenant identity. Retrieval resolves seed entities from the new task, performs a bounded
+one/two-hop traversal, and injects only compact evidence paths into the existing context
+prefix. Vector/lexical search remains responsible for semantic discovery; the graph adds
+explicit relationships and provenance.
+
+Graph endpoints:
+
+- `POST /api/graph/nodes`
+- `POST /api/graph/edges`
+- `POST /api/graph/traverse`
+
+## Memory governance
+
+- All new KB, lesson, profile, conversation, retrieval, checkpoint, and graph records carry
+  organisation/workspace scope.
+- Rule retrieval enforces tenant, agent/scope, status, and expiry constraints.
+- Context Health redacts common email, phone, government-ID, payment-card, and credential
+  patterns before recalled context reaches a model.
+- `DELETE /api/memory/users/{user_id}` removes user-owned memory.
+- `POST /api/memory/expired/prune?dry_run=true` previews expired records; use
+  `dry_run=false` to delete them.
+- Retrieval audit records contain rules, KB chunks, graph paths, trace ID, tenant identity,
+  context prefix, and embedding provider. Execution receipts hash the graph paths used.
+
 ## What each stage actually does
 
 **Reflection** (`reflection_service.py`)

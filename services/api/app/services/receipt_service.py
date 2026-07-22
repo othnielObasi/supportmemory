@@ -75,6 +75,17 @@ class ReceiptService:
         contracts = await self.store.find_many("task_contracts", {"task_id": task_id}, limit=1)
         checkpoints = await self.store.find_many("task_checkpoints", {"task_id": task_id}, limit=25, sort=[("created_at", DESCENDING)])
         reflections = await self.store.find_many("reflection_insights", {"source_trace_id": trace_id}, limit=10, sort=[("created_at", DESCENDING)])
+        retrievals = await self.store.find_many("retrieval_events", {"trace_id": trace_id}, limit=10, sort=[("created_at", DESCENDING)])
+        context_receipts = await self.store.find_many(
+            "context_receipts",
+            {
+                "task": trace.get("task_description"),
+                "organisation_id": trace.get("organisation_id", "org_default"),
+                "workspace_id": trace.get("workspace_id", "wrk_default"),
+            },
+            limit=5,
+            sort=[("created_at", DESCENDING)],
+        )
 
         contract = contracts[0] if contracts else None
 
@@ -107,6 +118,16 @@ class ReceiptService:
                 {"candidate_rule": r.get("candidate_rule"), "confidence": r.get("confidence"), "derivation": r.get("derivation")}
                 for r in reflections
             ],
+            "retrieval": [
+                {
+                    "rules": [rule.get("rule_id") for rule in event.get("retrieved_rules", [])],
+                    "kb_chunks": [hit.get("chunk_id") for hit in event.get("kb_hits", [])],
+                    "graph_path_hashes": [hashlib.sha256(_canonical(path)).hexdigest() for path in event.get("graph_paths", [])],
+                    "embedding_provider": event.get("embedding_provider"),
+                }
+                for event in retrievals
+            ],
+            "context_health_receipts": [r.get("receipt_id") or r.get("_id") for r in context_receipts],
         }
 
         canonical = _canonical(body)

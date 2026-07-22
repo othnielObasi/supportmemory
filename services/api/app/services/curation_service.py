@@ -10,6 +10,7 @@ from app.config import Settings
 from app.db.postgres import PostgresStore
 from app.models.schemas import LessonStatus, PlaybookRule, ReflectionInsight, new_id
 from app.services.embedding_service import EmbeddingService, cosine_similarity
+from app.context_health.service import ContextHealthService
 
 
 class CurationService:
@@ -25,7 +26,10 @@ class CurationService:
             return None, reason, None
 
         embedding = await self.embeddings.embed(reflection.candidate_rule)
-        duplicate = await self._find_duplicate(reflection.candidate_rule, embedding)
+        duplicate = await self._find_duplicate(
+            reflection.candidate_rule, embedding,
+            organisation_id=reflection.organisation_id, workspace_id=reflection.workspace_id,
+        )
         if duplicate:
             await self.store.update_one('playbook_rules', {'_id': duplicate['_id']}, {'$inc': {'failure_count': 1}, '$set': {'updated_at': datetime.now(timezone.utc)}})
             await self.store.update_one('reflection_insights', {'_id': reflection.id}, {'$set': {'status': LessonStatus.approved.value}})
@@ -33,7 +37,7 @@ class CurationService:
             return PlaybookRule.model_validate(duplicate), 'Merged with existing similar approved rule.', duplicate.get('signature')
 
         signature = self._sign(reflection.candidate_rule, reflection.source_trace_id)
-        rule = PlaybookRule(_id=new_id('rule'), rule_text=reflection.candidate_rule, category=self._category(reflection.candidate_rule), status=LessonStatus.approved, source_trace_id=reflection.source_trace_id, source_reflection_id=reflection.id, confidence=reflection.confidence, failure_count=1, signature=signature, policy_flags=[], embedding=embedding)
+        rule = PlaybookRule(_id=new_id('rule'), rule_text=reflection.candidate_rule, category=self._category(reflection.candidate_rule), status=LessonStatus.approved, source_trace_id=reflection.source_trace_id, source_reflection_id=reflection.id, confidence=reflection.confidence, failure_count=1, signature=signature, policy_flags=[], embedding=embedding, organisation_id=reflection.organisation_id, workspace_id=reflection.workspace_id, project_id=reflection.project_id, environment_id=reflection.environment_id, agent_id=reflection.agent_id)
         await self.store.insert_one('playbook_rules', rule.model_dump(by_alias=True))
         await self.store.update_one('reflection_insights', {'_id': reflection.id}, {'$set': {'status': LessonStatus.approved.value}})
         return rule, 'Safe, generalisable, useful, no PII leakage.', signature
@@ -45,13 +49,15 @@ class CurationService:
         pii_patterns = [r'\b\d{3}-\d{2}-\d{4}\b', r'\b\d{4}-\d{4}-\d{4}-\d{4}\b', r'[\w\.-]+@[\w\.-]+\.\w+']
         if any(re.search(pattern, text) for pattern in pii_patterns):
             return False, 'Candidate lesson appears to contain PII.'
+        if ContextHealthService().sanitize_text(text) != text:
+            return False, 'Candidate lesson contains sensitive or credential-like data.'
         unsafe = ['bypass governance', 'ignore policy', 'disable safety', 'exfiltrate', 'steal']
         if any(phrase in text.lower() for phrase in unsafe):
             return False, 'Candidate lesson contains unsafe instruction.'
         return True, 'Approved.'
 
-    async def _find_duplicate(self, rule_text: str, embedding: list[float]) -> dict | None:
-        docs = await self.store.find_many('playbook_rules', {'status': LessonStatus.approved.value}, limit=100, sort=[('created_at', DESCENDING)])
+    async def _find_duplicate(self, rule_text: str, embedding: list[float], *, organisation_id: str, workspace_id: str) -> dict | None:
+        docs = await self.store.find_many('playbook_rules', {'status': LessonStatus.approved.value, 'organisation_id': organisation_id, 'workspace_id': workspace_id}, limit=100, sort=[('created_at', DESCENDING)])
         for doc in docs:
             if doc.get('rule_text', '').strip().lower() == rule_text.strip().lower():
                 return doc

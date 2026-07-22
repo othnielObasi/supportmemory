@@ -6,6 +6,7 @@ from typing import Any, Optional
 from app.db.postgres import DESCENDING
 from app.db.postgres import PostgresStore
 from app.models.schemas import ExecutionTrace, FailureType, LessonStatus, ReflectionInsight, new_id
+from app.context_health.service import ContextHealthService
 
 
 REFLECTION_SYSTEM_PROMPT = (
@@ -36,7 +37,11 @@ class ReflectionService:
         self.store = store
         self.gateway = gateway
 
-    async def reflect(self, trace: ExecutionTrace) -> ReflectionInsight:
+    async def reflect(
+        self, trace: ExecutionTrace, *, organisation_id: str = "org_default",
+        workspace_id: str = "wrk_default", project_id: str = "prj_default",
+        environment_id: str = "dev",
+    ) -> ReflectionInsight:
         derivation = "llm"
         result = await self._derive_with_model(trace)
         if result is None:
@@ -55,6 +60,10 @@ class ReflectionService:
             confidence=confidence,
             status=LessonStatus.pending_curation,
             derivation=derivation,
+            organisation_id=organisation_id,
+            workspace_id=workspace_id,
+            project_id=project_id,
+            environment_id=environment_id,
         )
         await self.store.insert_one('reflection_insights', reflection.model_dump(by_alias=True))
         return reflection
@@ -66,7 +75,7 @@ class ReflectionService:
         if 'local-deterministic' in str(getattr(self.gateway, 'configured_models', {})):
             return None
 
-        user_prompt = self._render_trace(trace)
+        user_prompt = ContextHealthService().sanitize_text(self._render_trace(trace))
         try:
             result = await self.gateway.chat(
                 system=REFLECTION_SYSTEM_PROMPT,

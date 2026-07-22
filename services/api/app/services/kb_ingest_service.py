@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Union
 
@@ -91,6 +92,10 @@ class KbIngestService:
         source_system: str = "pdf_upload",
         tags: Optional[List[str]] = None,
         agent_id: str = "ticket-investigation-agent",
+        organisation_id: str = "org_default",
+        workspace_id: str = "wrk_default",
+        project_id: str = "prj_default",
+        environment_id: str = "dev",
     ) -> KbIngestResponse:
         text, page_count = self.extract_pdf_text(source)
         result = await self.ingest(
@@ -101,6 +106,10 @@ class KbIngestService:
                 source_system=source_system,
                 tags=(tags or []) + ["pdf", f"pages:{page_count}"],
                 agent_id=agent_id,
+                organisation_id=organisation_id,
+                workspace_id=workspace_id,
+                project_id=project_id,
+                environment_id=environment_id,
             )
         )
         return result
@@ -133,6 +142,11 @@ class KbIngestService:
                     "tags": payload.tags,
                     "index": index,
                     "created_at": created_at.isoformat(),
+                    "organisation_id": payload.organisation_id,
+                    "workspace_id": payload.workspace_id,
+                    "project_id": payload.project_id,
+                    "environment_id": payload.environment_id,
+                    "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
                 },
             )
             chunk_summaries.append(KbChunkSummary(chunk_id=chunk_id, index=index, char_count=len(chunk_text)))
@@ -150,6 +164,11 @@ class KbIngestService:
                 "chunk_count": len(chunk_summaries),
                 "char_count": len(payload.text),
                 "created_at": created_at.isoformat(),
+                "organisation_id": payload.organisation_id,
+                "workspace_id": payload.workspace_id,
+                "project_id": payload.project_id,
+                "environment_id": payload.environment_id,
+                "expires_at": payload.expires_at.isoformat() if payload.expires_at else None,
             },
         )
 
@@ -157,16 +176,20 @@ class KbIngestService:
             document_id=document_id,
             title=payload.title,
             chunk_count=len(chunk_summaries),
-            embedding_provider=self.settings.embedding_provider,
+            embedding_provider=self.embeddings.provider,
             chunks=chunk_summaries,
             source_type=payload.source_type,
             source_system=payload.source_system,
+            organisation_id=payload.organisation_id,
+            workspace_id=payload.workspace_id,
         )
 
-    async def list_documents(self, limit: int = 50) -> List[KbDocumentSummary]:
+    async def list_documents(self, limit: int = 50, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> List[KbDocumentSummary]:
         docs = await self.store.find_many("kb_documents", limit=limit, sort=[("created_at", DESCENDING)])
         results: List[KbDocumentSummary] = []
         for doc in docs:
+            if doc.get("organisation_id", "org_default") != organisation_id or doc.get("workspace_id", "wrk_default") != workspace_id:
+                continue
             results.append(
                 KbDocumentSummary(
                     document_id=doc.get("_id") or doc.get("id"),
@@ -181,11 +204,20 @@ class KbIngestService:
             )
         return results
 
-    async def search(self, query: str, top_k: int = 5, agent_id: Optional[str] = None) -> List[KbHit]:
+    async def search(self, query: str, top_k: int = 5, agent_id: Optional[str] = None, organisation_id: str = "org_default", workspace_id: str = "wrk_default") -> List[KbHit]:
         query_embedding = await self.embeddings.embed(query)
         docs = await self.store.find_many("kb_chunks", {"status": "approved"}, limit=300, sort=[("created_at", DESCENDING)])
         ranked: list[tuple[float, dict]] = []
         for doc in docs:
+            if doc.get("organisation_id", "org_default") != organisation_id or doc.get("workspace_id", "wrk_default") != workspace_id:
+                continue
+            expires_at = doc.get("expires_at")
+            if expires_at:
+                try:
+                    if datetime.fromisoformat(str(expires_at).replace("Z", "+00:00")) <= datetime.now(timezone.utc):
+                        continue
+                except ValueError:
+                    continue
             if agent_id and doc.get("agent_id") and doc.get("agent_id") != agent_id:
                 # Soft filter: still allow generic KB shared across agents
                 if doc.get("agent_id") not in {agent_id, "support_agent", "ticket-investigation-agent"}:
@@ -213,6 +245,7 @@ class KbIngestService:
                     text=doc.get("text", ""),
                     source_type=doc.get("source_type", "policy"),
                     source_system=doc.get("source_system", "kb"),
+                    evidence_ids=[doc.get("_id") or doc.get("id")],
                 )
             )
         return hits

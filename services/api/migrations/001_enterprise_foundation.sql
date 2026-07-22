@@ -24,4 +24,9 @@ CREATE INDEX IF NOT EXISTS idx_tm_records_status ON trace_memory_records (collec
 CREATE INDEX IF NOT EXISTS idx_tm_records_idempotency ON trace_memory_records (collection, (data->>'idempotency_key'));
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_api_key_hash ON trace_memory_records ((data->>'key_hash')) WHERE collection = 'api_keys' AND data ? 'key_hash';
 CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_action_idempotency ON trace_memory_records ((data->>'workspace_id'), (data->>'idempotency_key')) WHERE collection = 'action_executions' AND data ? 'idempotency_key';
-CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_idempotency_keys ON trace_memory_records ((data->>'workspace_id'), (data->>'key')) WHERE collection = 'idempotency_keys' AND data ? 'key';
+DROP INDEX IF EXISTS uq_tm_idempotency_keys;
+CREATE UNIQUE INDEX uq_tm_idempotency_keys ON trace_memory_records ((data->>'workspace_id'), (data->>'key')) WHERE collection = 'idempotency_keys' AND data ? 'key';
+CREATE INDEX IF NOT EXISTS idx_tm_graph_node_key ON trace_memory_records (collection, (data->>'workspace_id'), (data->>'node_type'), (data->>'canonical_key')) WHERE collection = 'knowledge_graph_nodes';
+CREATE INDEX IF NOT EXISTS idx_tm_graph_edge_source ON trace_memory_records (collection, (data->>'workspace_id'), (data->>'source_node_id')) WHERE collection = 'knowledge_graph_edges';
+CREATE INDEX IF NOT EXISTS idx_tm_graph_edge_target ON trace_memory_records (collection, (data->>'workspace_id'), (data->>'target_node_id')) WHERE collection = 'knowledge_graph_edges';
+CREATE UNIQUE INDEX IF NOT EXISTS uq_tm_graph_node_key ON trace_memory_records ((data->>'organisation_id'), (data->>'workspace_id'), (data->>'node_type'), (data->>'canonical_key')) WHERE collection = 'knowledge_graph_nodes';
